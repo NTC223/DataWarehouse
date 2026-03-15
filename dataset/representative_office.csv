@@ -1,0 +1,51 @@
+city_id,city_name,office_address,state,time
+1,Thành phố JaneQuận,"8 Jane Đường, Thành phố JohnQuận, 629903",Quận JaneQuận,2018-06-12
+2,JohnQuận,"23 Trần Ngõ, JohnHuyện, 988662",JaneThành phố,2019-11-06
+3,Thị xã JohnXã,"3 John Làng, JohnQuận, 205907",JaneThị xã,2019-05-18
+4,JohnHuyện,"1 John Hẻm, JaneHuyện, 771088",Huyện JohnQuận,2020-04-22
+5,JaneHuyện,"767 Jane Hẻm, Huyện JaneXã, 518801",JohnQuận,2018-09-30
+6,Thành phố JohnQuận,"1 Bùi Dãy, JohnPhường, 855731",Huyện JaneThành phố,2017-08-31
+7,Thị xã JohnPhường,"2 Jane Làng, Huyện JohnXã, 916449",Huyện JaneThành phố,2016-10-04
+8,JaneQuận,"718 John Dãy, Huyện JaneQuận, 665492",Huyện JanePhường,2019-06-13
+9,JaneThành phố,"09 John Đường, Thành phố JohnThành phố, 132938",JohnXã,2017-05-22
+10,JohnXã,"763 John Số, JaneThị xã, 589710",Thành phố JohnThị xã,2019-11-03
+11,Quận JohnQuận,"24 Phạm Ngõ, JohnThành phố, 783823",Thành phố JohnQuận,2018-03-26
+12,JohnThị xã,"06 Dương Khu, JaneQuận, 299122",JohnThành phố,2019-02-04
+13,Huyện JohnThành phố,"812 John Làng, JohnXã, 358175",Thành phố JanePhường,2019-02-12
+14,JaneQuận,"462 Dương Tổ, Thành phố JaneXã, 690341",Thành phố JohnXã,2017-07-11
+15,JohnQuận,"84 Jane Ngõ, Huyện JohnThành phố, 878480",Huyện JaneXã,2017-04-02
+16,JohnPhường,"7 Nguyễn Ngõ, JaneThành phố, 103717",JohnPhường,2021-02-05
+17,Thị xã JaneXã,"2 Jane Hẻm, JohnThành phố, 423232",JohnHuyện,2017-04-01
+18,Thành phố JaneXã,"2 John Hẻm, JohnQuận, 872343",JanePhường,2020-07-08
+19,Huyện JohnPhường,"33 Đặng Khu, Quận JohnPhường, 302511",JaneHuyện,2020-07-09
+20,JanePhường,"142 Nguyễn Ngõ, JanePhường, 924629",JaneXã,2021-02-13
+21,Thị xã JohnHuyện,"883 Bùi Ngõ, JanePhường, 989208",Huyện JanePhường,2018-03-29
+22,JaneXã,"6 Jane Số, Huyện JaneQuận, 550770",JaneThị xã,2018-05-30
+23,Thị xã JohnPhường,"343 John Đường, Quận JaneXã, 991014",Thị xã JanePhường,2019-01-29
+24,JaneThị xã,"632 Nguyễn Làng, Thị xã JohnThị xã, 800005",JaneXã,2020-04-10
+25,JaneQuận,"43 Mai Dãy, Huyện JaneThành phố, 848206",JohnHuyện,2017-11-17
+26,Quận JohnQuận,"3 Jane Số, JaneThị xã, 165290",Thị xã JaneXã,2020-12-05
+27,Thị xã JaneThành phố,"68 Jane Làng, JaneThị xã, 130434",JanePhường,2019-08-06
+28,JohnThị xã,"99 John Số, Thị xã JohnThành phố, 372793",JaneQuận,2018-06-22
+29,JaneHuyện,"17 John Tổ, Thành phố JohnThành phố, 359295",Thành phố JohnQuận,2016-10-30
+30,Quận JanePhường,"991 Jane Ngõ, Huyện JaneThị xã, 849747",Thành phố JohnThành phố,2019-09-08
+31,JohnXã,"6 Trần Tổ, Thị xã JaneThành phố, 554582",JanePhường,2016-12-18
+32,Huyện JaneThị xã,"31 Dương Làng, JaneHuyện, 130094",JaneQuận,2018-08-21
+33,JaneHuyện,"0 John Làng, JaneXã, 894993",Thị xã JaneThị xã,2020-02-29
+34,Huyện JohnThị xã,"9 Dương Tổ, JaneHuyện, 836996",JaneHuyện,2017-06-16
+35,Quận JaneThành phố,"374 Trần Làng, JohnHuyện, 288158",JohnPhường,2018-11-14
+36,JohnThành phố,"7 John Khu, JaneThị xã, 457256",Thành phố JaneThị xã,2016-10-08
+37,Thị xã JaneThành phố,"294 John Ngõ, JohnXã, 498855",JaneHuyện,2020-07-01
+38,JaneXã,"341 John Hẻm, Quận JohnThị xã, 572387",JaneThành phố,2017-05-10
+39,JaneThành phố,"9 Jane Ngõ, Quận JaneQuận, 174878",Quận JaneXã,2019-12-11
+40,JaneThành phố,"6 Mai Dãy, JohnXã, 141797",JaneXã,2017-06-14
+41,Quận JohnPhường,"787 Lê Số, JohnThị xã, 464863",JaneHuyện,2019-07-20
+42,Huyện JanePhường,"0 Trần Tổ, JaneThành phố, 910075",JohnPhường,2020-07-18
+43,JaneThành phố,"7 Nguyễn Làng, JohnHuyện, 559398",JohnThành phố,2021-01-23
+44,Quận JaneXã,"317 John Dãy, JaneThị xã, 975271",JaneQuận,2018-06-26
+45,Thị xã JohnXã,"465 Nguyễn Khu, JaneQuận, 568238",JaneHuyện,2018-12-16
+46,JaneHuyện,"6 Jane Đường, JanePhường, 950823",JanePhường,2020-02-28
+47,Thị xã JohnQuận,"718 Nguyễn Hẻm, JohnThành phố, 592296",JaneXã,2019-08-30
+48,Huyện JaneHuyện,"0 John Khu, Thành phố JaneThành phố, 897305",Thị xã JohnPhường,2017-09-11
+49,Thành phố JaneThành phố,"23 Hoàng Hẻm, Quận JohnXã, 501126",Thị xã JohnQuận,2018-07-04
+50,JaneHuyện,"82 Jane Tổ, JanePhường, 362246",JaneQuận,2021-03-12
