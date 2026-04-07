@@ -48,7 +48,6 @@ x-airflow-common: &airflow-common
   # In order to add custom dependencies or upgrade provider distributions you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.7}
   build: .
   env_file:
     - ${ENV_FILE_PATH:-.env}
@@ -60,7 +59,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ""
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-    AIRFLOW__CORE__LOAD_EXAMPLES: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://airflow-apiserver:8080/execution/"
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
@@ -72,6 +71,9 @@ x-airflow-common: &airflow-common
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # The following line can be used to set a custom config file, stored in the local config folder
     AIRFLOW_CONFIG: "/opt/airflow/config/airflow.cfg"
+
+    AIRFLOW_CONN_MYSQL_DEFAULT: "mysql://root:admin@mysql:3306/RepresentativeOffice"
+    AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql://admin:admin@pgsql:5432/postgres"
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
@@ -82,6 +84,10 @@ x-airflow-common: &airflow-common
     redis:
       condition: service_healthy
     postgres:
+      condition: service_healthy
+    mysql:
+      condition: service_healthy
+    pgsql:
       condition: service_healthy
   networks:
     - data_network
@@ -322,39 +328,24 @@ services:
     depends_on:
       <<: *airflow-common-depends-on
 
-  # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
-  # or by explicitly targeted on the command line e.g. docker-compose up flower.
-  # See: https://docs.docker.com/compose/profiles/
-  flower:
-    <<: *airflow-common
-    command: celery flower
-    profiles:
-      - flower
-    ports:
-      - "5555:5555"
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
-
   mysql:
     image: mysql:8.0
     container_name: mysql
     command: --secure-file-priv=""
     volumes:
       - mysql_h:/var/lib/mysql
-      - ./dataset:/tmp/dataset
+      - ./dataset/representative_office_data:/tmp/dataset
       - ./load_dataset_into_mysql:/docker-entrypoint-initdb.d
     ports:
       - "3306:3306"
     env_file: .env
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-padmin"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: always
     networks:
       - data_network
 
@@ -363,11 +354,18 @@ services:
     container_name: pgsql
     volumes:
       - postgres_data_h:/var/lib/postgresql/data
-      - ./dataset:/tmp/dataset
+      - ./dataset/sales_data:/tmp/dataset
       - ./load_dataset_into_pgsql:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     env_file: .env
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "admin", "-d", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: always
     networks:
       - data_network
 

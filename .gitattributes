@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────
+# Git Attributes
+# Cross-platform: Windows (CRLF) ↔ Ubuntu (LF)
+# Quy tắc: commit luôn lưu LF, checkout theo OS
+# ─────────────────────────────────────────────
+
+# Mặc định: tự động normalize
+* text=auto
+
+# ─────────────────────────────────────────────
+# Source code → luôn LF (kể cả trên Windows)
+# Lý do: Python, Bash, SQL không chấp nhận CRLF
+# ─────────────────────────────────────────────
+*.py        text eol=lf
+*.sql       text eol=lf
+*.sh        text eol=lf
+*.bash      text eol=lf
+
+# ─────────────────────────────────────────────
+# Config / Infra → LF
+# ─────────────────────────────────────────────
+*.yaml      text eol=lf
+*.yml       text eol=lf
+Dockerfile  text eol=lf
+*.env       text eol=lf
+.env*       text eol=lf
+*.cfg       text eol=lf
+*.ini       text eol=lf
+*.toml      text eol=lf
+
+# ─────────────────────────────────────────────
+# Docs → LF
+# ─────────────────────────────────────────────
+*.md        text eol=lf
+*.txt       text eol=lf
+*.rst       text eol=lf
+
+# ─────────────────────────────────────────────
+# Data files → LF (CSV dùng trong Linux container)
+# ─────────────────────────────────────────────
+*.csv       text eol=lf
+*.json      text eol=lf
+
+# ─────────────────────────────────────────────
+# Binary files → không xử lý line ending
+# ─────────────────────────────────────────────
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.gz        binary
+*.tar       binary
+*.whl       binary
+*.pyc       binary

@@ -1,0 +1,103 @@
+# ─────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env.local
+.env.*.local
+
+# ─────────────────────────────────────────────
+# Dataset / Generated data (KHÔNG commit data)
+# ─────────────────────────────────────────────
+dataset/representative_office_data/
+dataset/sales_data/
+
+# ─────────────────────────────────────────────
+# Airflow runtime
+# ─────────────────────────────────────────────
+logs/
+plugins/
+config/airflow.cfg
+
+# ─────────────────────────────────────────────
+# Docker
+# ─────────────────────────────────────────────
+# Không ignore docker-compose.yaml và Dockerfile
+# nhưng ignore override file nếu có
+docker-compose.override.yml
+
+# ─────────────────────────────────────────────
+# IDE / Editor
+# ─────────────────────────────────────────────
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains (PyCharm, DataGrip...)
+.idea/
+*.iml
+*.iws
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+\#*\#
+
+# ─────────────────────────────────────────────
+# OS artifacts
+# ─────────────────────────────────────────────
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS (nếu ai dùng Mac)
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+.fuse_hidden*
+.Trash-*
+.nfs*
+
+# ─────────────────────────────────────────────
+# Credentials / Secrets (KHÔNG BAO GIỜ commit)
+# ─────────────────────────────────────────────
+# .env bị ignore mặc định vì chứa credentials
+# nhưng giữ lại .env.example để team tham khảo
+.env
+!.env.example
+
+# ─────────────────────────────────────────────
+# Jupyter (nếu dùng để phân tích)
+# ─────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ─────────────────────────────────────────────
+# Misc
+# ─────────────────────────────────────────────
+*.log
+*.tmp
+*.bak
+*.orig
+*.csv

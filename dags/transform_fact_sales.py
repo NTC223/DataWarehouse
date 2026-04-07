@@ -1,3 +1,0 @@
-from load_utils_dwh import load_dimension_or_fact
-def transform_fact_sales():
-    load_dimension_or_fact('Fact_Sales', """SELECT CAST(TO_CHAR(o.order_date, 'YYYYMMDD') AS INTEGER) as date_key, dp.product_key, dc.customer_key, ds.store_key, o.order_id, op.ordered_quantity, op.ordered_price, (op.ordered_quantity * op.ordered_price) as total_amount FROM idb.\"Order\" o JOIN idb.OrderProduct op ON o.order_id = op.order_id JOIN dwh.Dim_Customer dc ON o.customer_id = dc.customer_id JOIN dwh.Dim_Product dp ON op.product_id = dp.product_id JOIN dwh.Dim_Store ds ON ds.store_id = 1 WHERE op.added_time >= '{last_runtime}'""", ['date_key', 'product_key', 'customer_key', 'store_key', 'order_id', 'ordered_quantity', 'ordered_price', 'total_amount'], True)

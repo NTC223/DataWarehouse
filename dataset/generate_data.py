@@ -4,163 +4,220 @@ from faker import Faker
 import random
 import os
 
-fake = Faker('vi_VN') # Dùng Locale tiếng Việt cho tên và địa chỉ chân thật
+# ─────────────────────────────────────────────
+# Khởi tạo
+# ─────────────────────────────────────────────
+
+fake = Faker('vi_VN')
 Faker.seed(42)
 random.seed(42)
 np.random.seed(42)
 
-# ========== CONFIGURATION ==========
-NUM_CITIES = 50
-NUM_STORES = 200
-NUM_PRODUCTS = 1000
-NUM_CUSTOMERS = 50000 
-NUM_ORDERS = 200000  # Generate 200k orders
+# ─────────────────────────────────────────────
+# Tham số cấu hình
+# ─────────────────────────────────────────────
 
-OUTPUT_DIR = "dataset"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+NUM_CITIES          = 50
+NUM_STORES          = 200
+NUM_PRODUCTIONS     = 1000
+NUM_CUSTOMERS       = 50000
+NUM_ORDERS          = 200000
 
-print("Starting Data Generation...")
+DIR_SOURCE1 = "dataset/representative_office_data"
+DIR_SOURCE2 = "dataset/sales_data"
+os.makedirs(DIR_SOURCE1, exist_ok=True)
+os.makedirs(DIR_SOURCE2, exist_ok=True)
 
-# 1. RepresentativeOffice (Thành phố/Văn phòng)
-print("Generating RepresentativeOffice...")
-city_data = []
-for i in range(1, NUM_CITIES + 1):
-    city_data.append({
-        "city_id": i,
-        "city_name": fake.city(),
+print("=" * 60)
+print("  BẮT ĐẦU SINH DỮ LIỆU")
+print("=" * 60)
+
+# ─────────────────────────────────────────────
+# Source 2 - sales data
+# ─────────────────────────────────────────────
+
+print ("\n [SOURCE 2] Sinh RepresentativeOffice data ...")
+
+city_rows = []
+for i in range (1, NUM_CITIES + 1):
+    city_rows.append({
+        "city_id"       : i,
+        "city_name"     : fake.city(),
         "office_address": fake.address().replace('\n', ', '),
-        "state": fake.city(), # Ở VN state/provice hay trùng city
-        "time": fake.date_between(start_date='-10y', end_date='-5y')
+        "state"         : fake.city(),
+        "time"          : fake.date_between(start_date='-10y', end_date='-5y')
     })
-df_city = pd.DataFrame(city_data)
-df_city.to_csv(f"{OUTPUT_DIR}/representative_office.csv", index=False)
 
-# 2. Store (Cửa hàng)
-print("Generating Store...")
-store_data = []
+df_city = pd.DataFrame(city_rows)
+df_city.to_csv(f"{DIR_SOURCE2}/representative_office.csv", index=False, lineterminator='\n')
+print(f"    → {len(df_city):,} văn phòng đại diện")
+
+# ─────────────────────────────────────────────
+# SOURCE 2: Store
+# ─────────────────────────────────────────────
+
+print("[Source 2] Sinh Store data...")
+
+store_rows = []
 for i in range(1, NUM_STORES + 1):
-    store_data.append({
-        "store_id": i,
-        "phone_number": fake.phone_number()[:20],
-        "time": fake.date_between(start_date='-5y', end_date='today'),
-        "city_id": random.choice(df_city['city_id'])
+    store_rows.append({
+        "store_id"      : i,
+        "phone_number"  : fake.phone_number()[:20],
+        "time"          : fake.date_between(start_date='-5y', end_date='today'),
+        "city_id"       : random.choice(df_city['city_id'].tolist())
     })
-df_store = pd.DataFrame(store_data)
-df_store.to_csv(f"{OUTPUT_DIR}/store.csv", index=False)
 
-# 3. Product (Sản phẩm)
-print("Generating Product...")
-product_data = []
-for i in range(1, NUM_PRODUCTS + 1):
-    product_data.append({
-        "product_id": i,
-        "description": fake.catch_phrase(),
-        "size": random.choice(['S', 'M', 'L', 'XL', 'XXL', 'Freesize']),
-        "weight": round(random.uniform(0.1, 50.0), 2),
-        "price": round(random.uniform(10.0, 5000.0), 2),
-        "time": fake.date_between(start_date='-5y', end_date='today')
+df_store = pd.DataFrame(store_rows)
+df_store.to_csv(f"{DIR_SOURCE2}/store.csv", index=False, lineterminator='\n')
+print(f"    → {len(df_store):,} cửa hàng")
+
+# ─────────────────────────────────────────────
+# SOURCE 2: Product
+# ─────────────────────────────────────────────
+
+print ("[SOURCE 2] Sinh Product data...")
+
+product_rows = []
+for i in range(1, NUM_PRODUCTIONS + 1):
+    product_rows.append({
+        "product_id"    : i,
+        "description"   : fake.catch_phrase(),
+        "size"          : random.choice(['S', 'M', 'L', 'XL', 'XXL', 'Freesize']),
+        "weight"        : round(random.uniform(0.1, 50.0), 2),
+        "price"         : round(random.uniform(10.0, 5000.0), 2),
+        "time"          : fake.date_between(start_date='-5y', end_date='today')
     })
-df_product = pd.DataFrame(product_data)
-df_product.to_csv(f"{OUTPUT_DIR}/product.csv", index=False)
 
-# 4. Customer & SubTypes
-print("Generating Customers...")
-customer_data = []
-tourist_data = []
-mail_data = []
+df_product = pd.DataFrame(product_rows)
+df_product.to_csv(f"{DIR_SOURCE2}/product.csv", index=False, lineterminator='\n')
+print(f"    → {len(df_product):,} sản phẩm")
+
+# ─────────────────────────────────────────────
+# SOURCE 1: Customer + Subtypes
+# ─────────────────────────────────────────────
+
+print("[SOURCE 1] Sinh Customer, TourisrCustomer, MailOrderCustomer data...")
+
+customer_rows = []
+tourist_rows = []
+mail_rows = []
+
+city_ids = df_city['city_id'].tolist() # Dùng city_id từ Source 2
 
 for i in range(1, NUM_CUSTOMERS + 1):
-    # Base Customer
-    cust_type = random.choices(['Tourist', 'Mail', 'Both'], weights=[40, 40, 20])[0]
-    first_order = fake.date_between(start_date='-4y', end_date='today')
-    
-    customer_data.append({
-        "customer_id": i,
-        "customer_name": fake.name(),
-        "city_id": random.choice(df_city['city_id']),
-        "first_order_date": first_order
+    cust_type   = random.choices(['Tourist', 'Mail', 'Both'], weights=[40, 40, 20])[0]
+    first_order = fake.date_between(start_date='-5y', end_date='today')
+
+    # ── Customer
+    customer_rows.append({
+        "customer_id"       : i,
+        "customer_name"     : fake.name(),
+        "city_id"           : random.choice(city_ids),
+        "first_order_date"  : first_order
     })
-    
+
+    # ── TouristCustomer
     if cust_type in ['Tourist', 'Both']:
-        tourist_data.append({
-            "customer_id": i,
-            "tour_guide": fake.name(),
-            "time": fake.date_between(start_date=first_order, end_date='today')
+        tourist_rows.append({
+            "customer_id"   : i,
+            "tour_guide"    : fake.name(),
+            "time"          : fake.date_between(start_date=first_order, end_date='today')
         })
-        
+
+    # ── MailOrderCustomer
     if cust_type in ['Mail', 'Both']:
-        mail_data.append({
-            "customer_id": i,
+        mail_rows.append({
+            "customer_id"   : i,
             "postal_address": fake.address().replace('\n', ', '),
-            "time": fake.date_between(start_date=first_order, end_date='today')
+            "time"          : fake.date_between(start_date=first_order, end_date='today')
         })
 
-df_customer = pd.DataFrame(customer_data)
-df_tourist = pd.DataFrame(tourist_data)
-df_mail = pd.DataFrame(mail_data)
+df_customer = pd.DataFrame(customer_rows)
+df_tourist  = pd.DataFrame(tourist_rows)
+df_mail     = pd.DataFrame(mail_rows)
 
-df_customer.to_csv(f"{OUTPUT_DIR}/customer.csv", index=False)
-df_tourist.to_csv(f"{OUTPUT_DIR}/tourist_customer.csv", index=False)
-df_mail.to_csv(f"{OUTPUT_DIR}/mail_order_customer.csv", index=False)
 
-# 5. Order & OrderProduct
-print("Generating Orders (This will take a few seconds)...")
-order_data = []
-order_product_data = []
+df_customer.to_csv(f"{DIR_SOURCE1}/customer.csv", index=False, lineterminator='\n')
+df_tourist.to_csv(f"{DIR_SOURCE1}/tourist_customer.csv", index=False, lineterminator='\n')
+df_mail.to_csv(f"{DIR_SOURCE1}/mail_order_customer.csv", index=False, lineterminator='\n')
 
-# Chọn random cửa hàng dựa theo thành phố của khách hàng 
-# (Như yêu cầu: Ưu tiên lấy kho từ thành phố của khách, nếu không thì lấy kho khác)
-cust_city_map = dict(zip(df_customer.customer_id, df_customer.city_id))
-city_store_map = df_store.groupby('city_id')['store_id'].apply(list).to_dict()
-all_stores = df_store['store_id'].tolist()
+tourist_count = len(df_tourist)
+mail_count = len(df_mail)
+both_count = NUM_CUSTOMERS - tourist_count - mail_count + len(
+    set(df_tourist['customer_id']) & set(df_mail['customer_id'])
+)
+print(f"    → {len(df_customer):,} khách hàng")
+print(f"       Tourist: {tourist_count:,} | MailOrder: {mail_count:,} | Both: {both_count:,}")
 
-product_price_map = dict(zip(df_product.product_id, df_product.price))
+# ─────────────────────────────────────────────
+# SOURCE 2: Order + OrderProduct
+# ─────────────────────────────────────────────
+
+print("[SOURCE 2] Sinh Order + OrderProduct data...")
+
+order_rows = []
+op_rows    = []
+
+customer_ids    = df_customer['customer_id'].tolist()
+product_ids     = df_product['product_id'].tolist()
+price_map       = dict(zip(df_product['product_id'], df_product['price']))
+first_order_map = dict(zip(df_customer['customer_id'], df_customer['first_order_date']))
 
 for i in range(1, NUM_ORDERS + 1):
-    cust_id = random.randint(1, NUM_CUSTOMERS)
-    order_date = fake.date_between(start_date='-2y', end_date='today')
-    
-    order_data.append({
-        "order_id": i,
-        "order_date": order_date,
-        "customer_id": cust_id
+    cust_id = random.choice(customer_ids)
+
+    first_order_date = first_order_map[cust_id]
+    order_date = fake.date_between(start_date=first_order_date, end_date='today')
+
+    # ── Order
+    order_rows.append({
+        "order_id"      : i,
+        "order_date"    : order_date,
+        "customer_id"   : cust_id
     })
-    
-    # Generate 1 to 5 products per order
-    num_items = random.randint(1, 5)
-    selected_products = random.sample(range(1, NUM_PRODUCTS + 1), num_items)
-    
+
+    # ── OrderProduct
+    num_items       = random.randint(1, 10)
+    selected_products  = random.sample(product_ids, num_items)
+
     for prod_id in selected_products:
-        order_product_data.append({
-            "order_id": i,
-            "product_id": prod_id,
-            "ordered_quantity": random.randint(1, 10),
-            "ordered_price": product_price_map[prod_id], # Giá lúc bán = giá sản phẩm
-            "time": order_date
+        op_rows.append({
+            "order_id"          : i,
+            "product_id"        : prod_id,
+            "ordered_quantity"  : random.randint(1, 10),
+            "ordered_price"       : price_map[prod_id],
+            "time"              : order_date            
         })
 
-df_order = pd.DataFrame(order_data)
-df_op = pd.DataFrame(order_product_data)
+df_order = pd.DataFrame(order_rows)
+df_op    = pd.DataFrame(op_rows)
+ 
+df_order.to_csv(f"{DIR_SOURCE2}/order.csv",         index=False, lineterminator='\n')
+df_op.to_csv(   f"{DIR_SOURCE2}/order_product.csv", index=False, lineterminator='\n')
+print(f"    → {len(df_order):,} đơn hàng | {len(df_op):,} dòng order_product")
 
-df_order.to_csv(f"{OUTPUT_DIR}/order.csv", index=False)
-df_op.to_csv(f"{OUTPUT_DIR}/order_product.csv", index=False)
 
-# 6. StockedProduct (Tồn kho)
-print("Generating Stock Inventory...")
-stock_data = []
-# Giả sử mỗi cửa hàng bán khoảng 100 sản phẩm ngẫu nhiên
-for store in range(1, NUM_STORES + 1):
-    stocked_products = random.sample(range(1, NUM_PRODUCTS + 1), 100)
-    for prod in stocked_products:
-        stock_data.append({
-            "store_id": store,
-            "product_id": prod,
+# ─────────────────────────────────────────────
+# SOURCE 2: StockedProduct
+# ─────────────────────────────────────────────
+
+print("[SOURCE 2] Sinh StockedProduct data...")
+
+stock_rows = []
+for store_id in range(1, NUM_STORES + 1):
+    stocked = random.sample(product_ids, 100)
+    for prod_id in stocked:
+        stock_rows.append({
+            "store_id"      : store_id,
+            "product_id"    : prod_id,
             "stock_quantity": random.randint(0, 500),
-            "time": fake.date_between(start_date='-1y', end_date='today')
+            "time"          :fake.date_between(start_date='-1y', end_date='today')
         })
-        
-df_stock = pd.DataFrame(stock_data)
-df_stock.to_csv(f"{OUTPUT_DIR}/stocked_product.csv", index=False)
 
-print(f"Data Generation Completed successfully in '{OUTPUT_DIR}' directory!")
-print(f"Total rows generated: {len(df_city) + len(df_store) + len(df_product) + len(df_customer) + len(df_tourist) + len(df_mail) + len(df_order) + len(df_op) + len(df_stock):,}")
+df_stock = pd.DataFrame(stock_rows)
+df_stock.to_csv(f"{DIR_SOURCE2}/stocked_product.csv", index=False, lineterminator='\n')
+print(f"    → {len(df_stock):,} bản ghi tồn kho")
+
+print("\n" + "=" * 60)
+print("  HOÀN THÀNH")
+print("=" * 60)
