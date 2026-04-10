@@ -18,6 +18,8 @@ docker compose down (-v để xóa volume nếu cần reset)
 
 ## 3. Trigger ETL: http://localhost:8080
 
-→ DAG: source_to_idb  (chạy trước)
+→ DAG: source_to_idb  (1)
 
-→ DAG: idb_to_dwh     (chạy sau)
+→ DAG: idb_to_dwh     (2)
+
+→ DAG: dwh_to_olap    (3)

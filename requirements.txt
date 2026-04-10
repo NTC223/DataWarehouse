@@ -3,3 +3,4 @@ apache-airflow-providers-postgres
 pandas
 mysqlclient
 psycopg2-binary
+faker
