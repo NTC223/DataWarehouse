@@ -91,3 +91,39 @@ CREATE INDEX idx_olap_inv_product_store_store ON olap.olap_inv_product_store (st
 CREATE INDEX idx_olap_inv_base_time ON olap.olap_inv_base (year, quarter, month);
 CREATE INDEX idx_olap_inv_base_prod ON olap.olap_inv_base (product_key);
 CREATE INDEX idx_olap_inv_base_store ON olap.olap_inv_base (store_key);
+CREATE INDEX idx_olap_inv_base_loc ON olap.olap_inv_base (state, city);
+
+-- Indexes for olap_inv_by_location
+CREATE INDEX idx_olap_inv_by_location_loc ON olap.olap_inv_by_location (state, city);
+
+-- Indexes for olap_inv_time_location
+CREATE INDEX idx_olap_inv_time_location_time ON olap.olap_inv_time_location (year, quarter, month);
+CREATE INDEX idx_olap_inv_time_location_loc ON olap.olap_inv_time_location (state, city);
+
+-- Indexes for olap_inv_product_location
+CREATE INDEX idx_olap_inv_product_location_prod ON olap.olap_inv_product_location (product_key);
+CREATE INDEX idx_olap_inv_product_location_loc ON olap.olap_inv_product_location (state, city);
+
+-- Indexes for olap_inv_store_location
+CREATE INDEX idx_olap_inv_store_location_store ON olap.olap_inv_store_location (store_key);
+CREATE INDEX idx_olap_inv_store_location_loc ON olap.olap_inv_store_location (state, city);
+
+-- Indexes for olap_inv_time_product_store
+CREATE INDEX idx_olap_inv_time_product_store_time ON olap.olap_inv_time_product_store (year, quarter, month);
+CREATE INDEX idx_olap_inv_time_product_store_prod ON olap.olap_inv_time_product_store (product_key);
+CREATE INDEX idx_olap_inv_time_product_store_store ON olap.olap_inv_time_product_store (store_key);
+
+-- Indexes for olap_inv_time_product_location
+CREATE INDEX idx_olap_inv_time_product_location_time ON olap.olap_inv_time_product_location (year, quarter, month);
+CREATE INDEX idx_olap_inv_time_product_location_prod ON olap.olap_inv_time_product_location (product_key);
+CREATE INDEX idx_olap_inv_time_product_location_loc ON olap.olap_inv_time_product_location (state, city);
+
+-- Indexes for olap_inv_time_store_location
+CREATE INDEX idx_olap_inv_time_store_location_time ON olap.olap_inv_time_store_location (year, quarter, month);
+CREATE INDEX idx_olap_inv_time_store_location_store ON olap.olap_inv_time_store_location (store_key);
+CREATE INDEX idx_olap_inv_time_store_location_loc ON olap.olap_inv_time_store_location (state, city);
+
+-- Indexes for olap_inv_product_store_location
+CREATE INDEX idx_olap_inv_product_store_location_prod ON olap.olap_inv_product_store_location (product_key);
+CREATE INDEX idx_olap_inv_product_store_location_store ON olap.olap_inv_product_store_location (store_key);
+CREATE INDEX idx_olap_inv_product_store_location_loc ON olap.olap_inv_product_store_location (state, city);

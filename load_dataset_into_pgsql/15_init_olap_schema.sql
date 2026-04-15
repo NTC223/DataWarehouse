@@ -202,6 +202,13 @@ CREATE TABLE IF NOT EXISTS olap.olap_inv_by_store (
     total_quantity_on_hand   BIGINT
 );
 
+-- Dim 1 – by Location
+CREATE TABLE IF NOT EXISTS olap.olap_inv_by_location (
+    state                    VARCHAR(100),
+    city                     VARCHAR(100),
+    total_quantity_on_hand   BIGINT
+);
+
 -- Dim 2 – Time × Product
 CREATE TABLE IF NOT EXISTS olap.olap_inv_time_product (
     year                     SMALLINT,
@@ -220,6 +227,16 @@ CREATE TABLE IF NOT EXISTS olap.olap_inv_time_store (
     total_quantity_on_hand   BIGINT
 );
 
+-- Dim 2 – Time × Location
+CREATE TABLE IF NOT EXISTS olap.olap_inv_time_location (
+    year                     SMALLINT,
+    quarter                  SMALLINT,
+    month                    SMALLINT,
+    state                    VARCHAR(100),
+    city                     VARCHAR(100),
+    total_quantity_on_hand   BIGINT
+);
+
 -- Dim 2 – Product × Store
 CREATE TABLE IF NOT EXISTS olap.olap_inv_product_store (
     product_key              INT,
@@ -227,12 +244,71 @@ CREATE TABLE IF NOT EXISTS olap.olap_inv_product_store (
     total_quantity_on_hand   BIGINT
 );
 
--- Dim 3 – BASE (full combination)
-CREATE TABLE IF NOT EXISTS olap.olap_inv_base (
+-- Dim 2 – Product × Location
+CREATE TABLE IF NOT EXISTS olap.olap_inv_product_location (
+    product_key              INT,
+    state                    VARCHAR(100),
+    city                     VARCHAR(100),
+    total_quantity_on_hand   BIGINT
+);
+
+-- Dim 2 – Store × Location
+CREATE TABLE IF NOT EXISTS olap.olap_inv_store_location (
+    store_key                INT,
+    state                    VARCHAR(100),
+    city                     VARCHAR(100),
+    total_quantity_on_hand   BIGINT
+);
+
+-- Dim 3 – Time × Product × Store
+CREATE TABLE IF NOT EXISTS olap.olap_inv_time_product_store (
+    year                     SMALLINT,
+    quarter                  SMALLINT,
+    month                    SMALLINT,
+    product_key              INT,
+    store_key                INT,
+    total_quantity_on_hand   BIGINT
+);
+
+-- Dim 3 – Time × Product × Location
+CREATE TABLE IF NOT EXISTS olap.olap_inv_time_product_location (
+    year                     SMALLINT,
+    quarter                  SMALLINT,
+    month                    SMALLINT,
+    product_key              INT,
+    state                    VARCHAR(100),
+    city                     VARCHAR(100),
+    total_quantity_on_hand   BIGINT
+);
+
+-- Dim 3 – Time × Store × Location
+CREATE TABLE IF NOT EXISTS olap.olap_inv_time_store_location (
     year                     SMALLINT,
     quarter                  SMALLINT,
     month                    SMALLINT,
     store_key                INT,
+    state                    VARCHAR(100),
+    city                     VARCHAR(100),
+    total_quantity_on_hand   BIGINT
+);
+
+-- Dim 3 – Product × Store × Location
+CREATE TABLE IF NOT EXISTS olap.olap_inv_product_store_location (
     product_key              INT,
+    store_key                INT,
+    state                    VARCHAR(100),
+    city                     VARCHAR(100),
+    total_quantity_on_hand   BIGINT
+);
+
+-- Dim 4 – BASE (full combination)
+CREATE TABLE IF NOT EXISTS olap.olap_inv_base (
+    year                     SMALLINT,
+    quarter                  SMALLINT,
+    month                    SMALLINT,
+    product_key              INT,
+    store_key                INT,
+    state                    VARCHAR(100),
+    city                     VARCHAR(100),
     total_quantity_on_hand   BIGINT
 );
