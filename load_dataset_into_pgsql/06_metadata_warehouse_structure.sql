@@ -34,7 +34,7 @@ INSERT INTO warehouse_structure (object_type, object_name, schema_name, parent_i
 ('table', 'Order', 'idb',
  (SELECT id FROM warehouse_structure WHERE object_name='idb' AND object_type='schema'),
  'Đơn hàng từ PostgreSQL Source 2',
- '{"order_id":"int","order_date":"date","customer_id":"int"}'),
+ '{"order_id":"int","customer_id":"int","order_date":"date"}'),
 ('table', 'OrderProduct', 'idb',
  (SELECT id FROM warehouse_structure WHERE object_name='idb' AND object_type='schema'),
  'Chi tiết đơn hàng',

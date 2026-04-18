@@ -37,7 +37,7 @@ ORDER BY schemaname, tablename, indexname;
 EXPLAIN ANALYZE
 SELECT product_key, SUM(total_amount) AS revenue
 FROM dwh.Fact_Sales
-WHERE time_key >= 20240101 AND time_key <= 20241231
+WHERE time_key >= 202401 AND time_key <= 202412
 GROUP BY product_key
 ORDER BY revenue DESC;
 
@@ -56,7 +56,7 @@ SELECT l.state, l.city, SUM(f.total_amount) AS revenue
 FROM dwh.Fact_Sales f
 JOIN dwh.Dim_Customer c ON f.customer_key = c.customer_key
 JOIN dwh.Dim_Location l ON c.location_key  = l.location_key
-WHERE l.state = 'Hà Nội'
+WHERE l.state = 'California'
 GROUP BY l.state, l.city
 ORDER BY revenue DESC;
 

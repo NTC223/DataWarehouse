@@ -18,7 +18,7 @@ FROM '/tmp/dataset/product.csv'
 DELIMITER ','
 CSV HEADER;
 
-COPY "Order"(order_id, order_date, customer_id)
+COPY "Order"(order_id, customer_id, order_date)
 FROM '/tmp/dataset/order.csv'
 DELIMITER ','
 CSV HEADER;

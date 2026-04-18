@@ -11,9 +11,9 @@ CREATE TABLE Dim_Time (
 
 CREATE TABLE Dim_Location (
     location_key int PRIMARY KEY,
-    city varchar(50),
-    state varchar(50),
-    office_address varchar(50)
+    city varchar(100),
+    state varchar(100),
+    office_address varchar(255)
 );
 
 CREATE TABLE Dim_Store (
@@ -25,7 +25,7 @@ CREATE TABLE Dim_Store (
 
 CREATE TABLE Dim_Customer (
     customer_key int PRIMARY KEY,
-    customer_name varchar(50),
+    customer_name varchar(100),
     customer_type varchar(50),
     first_order_date date,
     location_key int,

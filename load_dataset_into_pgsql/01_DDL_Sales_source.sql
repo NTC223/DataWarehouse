@@ -29,8 +29,8 @@ CREATE TABLE Product (
 
 CREATE TABLE "Order" (
     order_id int PRIMARY KEY,
-    order_date date,
-    customer_id int
+    customer_id int,
+    order_date date
 );
 
 CREATE TABLE StockedProduct (

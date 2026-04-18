@@ -51,8 +51,8 @@ CREATE TABLE Product (
 
 CREATE TABLE "Order" (
     order_id int PRIMARY KEY,
-    order_date date,
     customer_id int,
+    order_date date,
     FOREIGN KEY (customer_id) REFERENCES Customer(customer_id)
 );
 

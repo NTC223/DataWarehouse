@@ -30,20 +30,20 @@ INSERT INTO data_dictionary
 ('idb_to_dwh', 'idb', 'Product','weight',      'decimal','dwh', 'Dim_Product','weight',      'decimal', NULL),
 
 -- ── IDB → Dim_Time (derive từ order_date) ───────────────────
-('idb_to_dwh', 'idb', 'Order','order_date','date','dwh', 'Dim_Time','time_key', 'int',    'TO_CHAR(order_date, ''YYYYMMDD'')::int'),
+('idb_to_dwh', 'idb', 'Order','order_date','date','dwh', 'Dim_Time','time_key', 'int',    'TO_CHAR(order_date, ''YYYYMM'')::int'),
 ('idb_to_dwh', 'idb', 'Order','order_date','date','dwh', 'Dim_Time','month',    'int',    'EXTRACT(MONTH FROM order_date)::int'),
 ('idb_to_dwh', 'idb', 'Order','order_date','date','dwh', 'Dim_Time','quarter',  'int',    'EXTRACT(QUARTER FROM order_date)::int'),
 ('idb_to_dwh', 'idb', 'Order','order_date','date','dwh', 'Dim_Time','year',     'int',    'EXTRACT(YEAR FROM order_date)::int'),
 
 -- ── IDB → Fact_Sales ────────────────────────────────────────
-('idb_to_dwh', 'idb', 'Order',       'order_date',       'date',    'dwh', 'Fact_Sales','time_key',        'int',    'TO_CHAR(order_date, ''YYYYMMDD'')::int'),
+('idb_to_dwh', 'idb', 'Order',       'order_date',       'date',    'dwh', 'Fact_Sales','time_key',        'int',    'TO_CHAR(order_date, ''YYYYMM'')::int'),
 ('idb_to_dwh', 'idb', 'OrderProduct','product_id',       'int',     'dwh', 'Fact_Sales','product_key',     'int',    'DIRECT MAP'),
 ('idb_to_dwh', 'idb', 'Order',       'customer_id',      'int',     'dwh', 'Fact_Sales','customer_key',    'int',    'DIRECT MAP'),
 ('idb_to_dwh', 'idb', 'OrderProduct','ordered_quantity', 'int',     'dwh', 'Fact_Sales','quantity_ordered','int',    'SUM(ordered_quantity) GROUP BY time_key, product_key, customer_key'),
 ('idb_to_dwh', 'idb', 'OrderProduct','ordered_price',    'decimal', 'dwh', 'Fact_Sales','total_amount',    'decimal','SUM(ordered_quantity * ordered_price) GROUP BY time_key, product_key, customer_key'),
 
 -- ── IDB → Fact_Inventory ────────────────────────────────────
-('idb_to_dwh', 'idb', 'StockedProduct','last_updated_time','date','dwh', 'Fact_Inventory','time_key',       'int',  'TO_CHAR(last_updated_time, ''YYYYMMDD'')::int'),
+('idb_to_dwh', 'idb', 'StockedProduct','last_updated_time','date','dwh', 'Fact_Inventory','time_key',       'int',  'TO_CHAR(MAX(last_updated_time), ''YYYYMM'')::int — Periodic Snapshot'),
 ('idb_to_dwh', 'idb', 'StockedProduct','store_id',         'int', 'dwh', 'Fact_Inventory','store_key',      'int',  'DIRECT MAP'),
 ('idb_to_dwh', 'idb', 'StockedProduct','product_id',       'int', 'dwh', 'Fact_Inventory','product_key',    'int',  'DIRECT MAP'),
 ('idb_to_dwh', 'idb', 'StockedProduct','stock_quantity',   'int', 'dwh', 'Fact_Inventory','quantity_on_hand','int', 'LATEST value per (time_key, store_key, product_key) — ON CONFLICT DO UPDATE');
