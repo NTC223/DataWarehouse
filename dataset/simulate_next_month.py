@@ -94,29 +94,46 @@ sold_dict = dict(zip(sold_qty['product_id'], sold_qty['ordered_quantity']))
 # Nếu để list of dict thì thao tác dễ hơn
 stock_list = df_stock.to_dict('records')
 
-for prod_id, qty_to_deduct in sold_dict.items():
-    # Tìm các cửa hàng đang tồn mặt hàng này
+for prod_id, total_sold in sold_dict.items():
+    # Tìm tất cả cửa hàng có tồn mặt hàng này
     stores_with_prod = [s for s in stock_list if s['product_id'] == prod_id]
-    if stores_with_prod:
-        # Phân bổ trừ dần vào tồn kho của các cửa hàng
-        for s in stores_with_prod:
-            if qty_to_deduct <= 0:
-                break
-            
-            # Khách có thể mua nhiều hơn tồn kho nên giả lập có thể âm (hoặc giới hạn về 0 tùy logic kinh doanh)
-            # Ở đây ta ưu tiên xài sạch số tồn hiện tại trước, nếu không đủ thì cho âm = nợ order.
-            current_stock = s['stock_quantity']
-            deduct = min(current_stock, qty_to_deduct) if current_stock > 0 else 0
-            
-            # Trừ số lượng tồn kho (nếu store hết tồn kho nhưng bị trừ tiếp thì cho thành số âm - hết hàng/đặt trước)
-            if deduct == 0:  
-                deduct = max(qty_to_deduct, 0)
+    if not stores_with_prod:
+        continue
+
+    # Lọc ra các store còn hàng
+    available_stores = [s for s in stores_with_prod if s['stock_quantity'] > 0]
+    
+    remaining_to_deduct = total_sold
+    while remaining_to_deduct > 0 and available_stores:
+        n_stores = len(available_stores)
+        qty_per_store = remaining_to_deduct // n_stores
+        remainder = remaining_to_deduct % n_stores
+        
+        next_available = []
+        deducted_in_round = 0
+        
+        for idx, s in enumerate(available_stores):
+            deduct = qty_per_store + (1 if idx < remainder else 0)
+            if deduct == 0:
+                next_available.append(s)
+                continue
                 
-            s['stock_quantity'] -= deduct
-            qty_to_deduct -= deduct
+            actual_deduct = min(s['stock_quantity'], deduct)
+            s['stock_quantity'] -= actual_deduct
+            s['time'] = str(end_date.date())  # Ghi nhận thời điểm biến động mới nhất
             
-            # Cập nhật time để ghi nhận thời điểm biến động mới nhất cho logic ETL
-            s['time'] = str(end_date.date())
+            deducted_in_round += actual_deduct
+            
+            if s['stock_quantity'] > 0:
+                next_available.append(s)
+                
+        remaining_to_deduct -= deducted_in_round
+        
+        # Thoát nếu không trừ thêm được khoản nào (đề phòng lặp vô hạn)
+        if deducted_in_round == 0:
+            break
+            
+        available_stores = next_available
 
 df_new_stock = pd.DataFrame(stock_list).sort_values(by='time')
 
