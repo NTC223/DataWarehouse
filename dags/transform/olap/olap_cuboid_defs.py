@@ -367,215 +367,87 @@ CUBE1 = [
 _SK_COLS = "fi.store_key, dl.city, dl.state"
 _PI   = "fi.product_key"
 
+
+def _build_inv_snapshot_sql(select_clause, group_clause=""):
+    # Determine time group columns
+    time_cols = []
+    if "dt.year" in select_clause: time_cols.append("dt.year")
+    if "dt.quarter" in select_clause: time_cols.append("dt.quarter")
+    if "dt.month" in select_clause: time_cols.append("dt.month")
+    
+    partition = "fi.product_key, fi.store_key"
+    if time_cols:
+        partition += ", " + ", ".join(time_cols)
+        
+    subquery = (
+        f"SELECT DISTINCT ON ({partition}) "
+        f"  fi.quantity_on_hand, fi.product_key, fi.store_key, "
+        f"  dt.year, dt.quarter, dt.month, dl.city, dl.state "
+        f"FROM dwh.Fact_Inventory fi "
+        f"JOIN dwh.Dim_Time dt ON fi.time_key = dt.time_key "
+        f"JOIN dwh.Dim_Store ds ON fi.store_key = ds.store_key "
+        f"JOIN dwh.Dim_Location dl ON ds.location_key = dl.location_key "
+        f"ORDER BY {partition}, fi.time_key DESC"
+    )
+    
+    # Strip aliases for the outer select/group
+    outer_select = select_clause.replace("fi.", "").replace("dt.", "").replace("dl.", "").replace("SUM(quantity_on_hand)", "SUM(base.quantity_on_hand)")
+    outer_group = group_clause.replace("fi.", "").replace("dt.", "").replace("dl.", "")
+    
+    group_str = f" GROUP BY {outer_group}" if outer_group else ""
+    return f"SELECT {outer_select} FROM ({subquery}) base{group_str}"
+
 CUBE2 = [
-
-    # ── Dim-0: ALL ───────────────────────────────────────────
-    {
-        'table': 'olap_inv_all',
-        'sql': f"SELECT {_INV_M} FROM {_FI}",
-        'columns': ['total_quantity_on_hand'],
-    },
-
-    # ── Dim-1: Time only ─────────────────────────────────────
-    {
-        'table': 'olap_inv_by_time',
-        'sql': f"SELECT {_M}, {_INV_M} FROM {_FI} {_DT_I} GROUP BY {_M}",
-        'columns': ['year','quarter','month','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_by_quarter',
-        'sql': f"SELECT {_Q}, {_INV_M} FROM {_FI} {_DT_I} GROUP BY {_Q}",
-        'columns': ['year','quarter','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_by_year',
-        'sql': f"SELECT {_Y}, {_INV_M} FROM {_FI} {_DT_I} GROUP BY {_Y}",
-        'columns': ['year','total_quantity_on_hand'],
-    },
-
-    # ── Dim-1: Product only ───────────────────────────────────
-    {
-        'table': 'olap_inv_by_product',
-        'sql': f"SELECT {_PI}, {_INV_M} FROM {_FI} GROUP BY {_PI}",
-        'columns': ['product_key','total_quantity_on_hand'],
-    },
-
-    # ── Dim-1: Store only ─────────────────────────────────────
-    {
-        'table': 'olap_inv_by_store',
-        'sql': (f"SELECT {_SK_COLS}, {_INV_M} FROM {_FI} {_DS} {_DL_S} "
-                f"GROUP BY {_SK_COLS}"),
-        'columns': ['store_key','city','state','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_by_city',
-        'sql': (f"SELECT {_CI2}, {_INV_M} FROM {_FI} {_DS} {_DL_S} GROUP BY {_CI2}"),
-        'columns': ['state','city','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_by_state',
-        'sql': (f"SELECT {_ST2}, {_INV_M} FROM {_FI} {_DS} {_DL_S} GROUP BY {_ST2}"),
-        'columns': ['state','total_quantity_on_hand'],
-    },
-
-    # ── Dim-2: Time × Product ────────────────────────────────
-    {
-        'table': 'olap_inv_time_product',
-        'sql': (f"SELECT {_M}, {_PI}, {_INV_M} FROM {_FI} {_DT_I} GROUP BY {_M}, {_PI}"),
-        'columns': ['year','quarter','month','product_key','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_quarter_product',
-        'sql': (f"SELECT {_Q}, {_PI}, {_INV_M} FROM {_FI} {_DT_I} GROUP BY {_Q}, {_PI}"),
-        'columns': ['year','quarter','product_key','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_year_product',
-        'sql': (f"SELECT {_Y}, {_PI}, {_INV_M} FROM {_FI} {_DT_I} GROUP BY {_Y}, {_PI}"),
-        'columns': ['year','product_key','total_quantity_on_hand'],
-    },
-
-    # ── Dim-2: Time × Store (month) ──────────────────────────
-    {
-        'table': 'olap_inv_time_store',
-        'sql': (f"SELECT {_M}, {_SK_COLS}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_M}, {_SK_COLS}"),
-        'columns': ['year','quarter','month','store_key','city','state','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_month_city',
-        'sql': (f"SELECT {_M}, {_CI2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_M}, {_CI2}"),
-        'columns': ['year','quarter','month','state','city','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_month_state',
-        'sql': (f"SELECT {_M}, {_ST2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_M}, {_ST2}"),
-        'columns': ['year','quarter','month','state','total_quantity_on_hand'],
-    },
-
-    # ── Dim-2: Time × Store (quarter) ────────────────────────
-    {
-        'table': 'olap_inv_quarter_store',
-        'sql': (f"SELECT {_Q}, {_SK_COLS}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Q}, {_SK_COLS}"),
-        'columns': ['year','quarter','store_key','city','state','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_quarter_city',
-        'sql': (f"SELECT {_Q}, {_CI2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Q}, {_CI2}"),
-        'columns': ['year','quarter','state','city','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_quarter_state',
-        'sql': (f"SELECT {_Q}, {_ST2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Q}, {_ST2}"),
-        'columns': ['year','quarter','state','total_quantity_on_hand'],
-    },
-
-    # ── Dim-2: Time × Store (year) ───────────────────────────
-    {
-        'table': 'olap_inv_year_store',
-        'sql': (f"SELECT {_Y}, {_SK_COLS}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Y}, {_SK_COLS}"),
-        'columns': ['year','store_key','city','state','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_year_city',
-        'sql': (f"SELECT {_Y}, {_CI2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Y}, {_CI2}"),
-        'columns': ['year','state','city','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_year_state',
-        'sql': (f"SELECT {_Y}, {_ST2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Y}, {_ST2}"),
-        'columns': ['year','state','total_quantity_on_hand'],
-    },
-
-    # ── Dim-2: Product × Store ───────────────────────────────
-    {
-        'table': 'olap_inv_product_store',
-        'sql': (f"SELECT {_PI}, {_SK_COLS}, {_INV_M} FROM {_FI} {_DS} {_DL_S} "
-                f"GROUP BY {_PI}, {_SK_COLS}"),
-        'columns': ['product_key','store_key','city','state','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_product_city',
-        'sql': (f"SELECT {_PI}, {_CI2}, {_INV_M} FROM {_FI} {_DS} {_DL_S} "
-                f"GROUP BY {_PI}, {_CI2}"),
-        'columns': ['product_key','state','city','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_product_state',
-        'sql': (f"SELECT {_PI}, {_ST2}, {_INV_M} FROM {_FI} {_DS} {_DL_S} "
-                f"GROUP BY {_PI}, {_ST2}"),
-        'columns': ['product_key','state','total_quantity_on_hand'],
-    },
-
-    # ── Dim-3: Time × Product × Store (month) ────────────────
-    {
-        'table': 'olap_inv_base',
-        'sql': (f"SELECT {_M}, {_PI}, {_SK_COLS}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_M}, {_PI}, {_SK_COLS}"),
-        'columns': ['year','quarter','month','product_key','store_key',
-                    'city','state','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_month_product_city',
-        'sql': (f"SELECT {_M}, {_PI}, {_CI2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_M}, {_PI}, {_CI2}"),
-        'columns': ['year','quarter','month','product_key','state','city','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_month_product_state',
-        'sql': (f"SELECT {_M}, {_PI}, {_ST2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_M}, {_PI}, {_ST2}"),
-        'columns': ['year','quarter','month','product_key','state','total_quantity_on_hand'],
-    },
-
-    # ── Dim-3: Time × Product × Store (quarter) ──────────────
-    {
-        'table': 'olap_inv_quarter_product_store',
-        'sql': (f"SELECT {_Q}, {_PI}, {_SK_COLS}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Q}, {_PI}, {_SK_COLS}"),
-        'columns': ['year','quarter','product_key','store_key',
-                    'city','state','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_quarter_product_city',
-        'sql': (f"SELECT {_Q}, {_PI}, {_CI2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Q}, {_PI}, {_CI2}"),
-        'columns': ['year','quarter','product_key','state','city','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_quarter_product_state',
-        'sql': (f"SELECT {_Q}, {_PI}, {_ST2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Q}, {_PI}, {_ST2}"),
-        'columns': ['year','quarter','product_key','state','total_quantity_on_hand'],
-    },
-
-    # ── Dim-3: Time × Product × Store (year) ─────────────────
-    {
-        'table': 'olap_inv_year_product_store',
-        'sql': (f"SELECT {_Y}, {_PI}, {_SK_COLS}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Y}, {_PI}, {_SK_COLS}"),
-        'columns': ['year','product_key','store_key','city','state','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_year_product_city',
-        'sql': (f"SELECT {_Y}, {_PI}, {_CI2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Y}, {_PI}, {_CI2}"),
-        'columns': ['year','product_key','state','city','total_quantity_on_hand'],
-    },
-    {
-        'table': 'olap_inv_year_product_state',
-        'sql': (f"SELECT {_Y}, {_PI}, {_ST2}, {_INV_M} FROM {_FI} {_DT_I} {_DS} {_DL_S} "
-                f"GROUP BY {_Y}, {_PI}, {_ST2}"),
-        'columns': ['year','product_key','state','total_quantity_on_hand'],
-    },
+    { 'table': 'olap_inv_all', 'sql': _build_inv_snapshot_sql(f"{_INV_M}"), 'columns': ['total_quantity_on_hand'] },
+    
+    # Dim-1: Time only
+    { 'table': 'olap_inv_by_time', 'sql': _build_inv_snapshot_sql(f"{_M}, {_INV_M}", f"{_M}"), 'columns': ['year','quarter','month','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_by_quarter', 'sql': _build_inv_snapshot_sql(f"{_Q}, {_INV_M}", f"{_Q}"), 'columns': ['year','quarter','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_by_year', 'sql': _build_inv_snapshot_sql(f"{_Y}, {_INV_M}", f"{_Y}"), 'columns': ['year','total_quantity_on_hand'] },
+    
+    # Dim-1: Product only
+    { 'table': 'olap_inv_by_product', 'sql': _build_inv_snapshot_sql(f"{_PI}, {_INV_M}", f"{_PI}"), 'columns': ['product_key','total_quantity_on_hand'] },
+    
+    # Dim-1: Store only
+    { 'table': 'olap_inv_by_store', 'sql': _build_inv_snapshot_sql(f"{_SK_COLS}, {_INV_M}", f"{_SK_COLS}"), 'columns': ['store_key','city','state','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_by_city', 'sql': _build_inv_snapshot_sql(f"{_CI2}, {_INV_M}", f"{_CI2}"), 'columns': ['state','city','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_by_state', 'sql': _build_inv_snapshot_sql(f"{_ST2}, {_INV_M}", f"{_ST2}"), 'columns': ['state','total_quantity_on_hand'] },
+    
+    # Dim-2: Time x Product
+    { 'table': 'olap_inv_time_product', 'sql': _build_inv_snapshot_sql(f"{_M}, {_PI}, {_INV_M}", f"{_M}, {_PI}"), 'columns': ['year','quarter','month','product_key','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_quarter_product', 'sql': _build_inv_snapshot_sql(f"{_Q}, {_PI}, {_INV_M}", f"{_Q}, {_PI}"), 'columns': ['year','quarter','product_key','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_year_product', 'sql': _build_inv_snapshot_sql(f"{_Y}, {_PI}, {_INV_M}", f"{_Y}, {_PI}"), 'columns': ['year','product_key','total_quantity_on_hand'] },
+    
+    # Dim-2: Time x Store
+    { 'table': 'olap_inv_time_store', 'sql': _build_inv_snapshot_sql(f"{_M}, {_SK_COLS}, {_INV_M}", f"{_M}, {_SK_COLS}"), 'columns': ['year','quarter','month','store_key','city','state','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_month_city', 'sql': _build_inv_snapshot_sql(f"{_M}, {_CI2}, {_INV_M}", f"{_M}, {_CI2}"), 'columns': ['year','quarter','month','state','city','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_month_state', 'sql': _build_inv_snapshot_sql(f"{_M}, {_ST2}, {_INV_M}", f"{_M}, {_ST2}"), 'columns': ['year','quarter','month','state','total_quantity_on_hand'] },
+    
+    { 'table': 'olap_inv_quarter_store', 'sql': _build_inv_snapshot_sql(f"{_Q}, {_SK_COLS}, {_INV_M}", f"{_Q}, {_SK_COLS}"), 'columns': ['year','quarter','store_key','city','state','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_quarter_city', 'sql': _build_inv_snapshot_sql(f"{_Q}, {_CI2}, {_INV_M}", f"{_Q}, {_CI2}"), 'columns': ['year','quarter','state','city','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_quarter_state', 'sql': _build_inv_snapshot_sql(f"{_Q}, {_ST2}, {_INV_M}", f"{_Q}, {_ST2}"), 'columns': ['year','quarter','state','total_quantity_on_hand'] },
+    
+    { 'table': 'olap_inv_year_store', 'sql': _build_inv_snapshot_sql(f"{_Y}, {_SK_COLS}, {_INV_M}", f"{_Y}, {_SK_COLS}"), 'columns': ['year','store_key','city','state','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_year_city', 'sql': _build_inv_snapshot_sql(f"{_Y}, {_CI2}, {_INV_M}", f"{_Y}, {_CI2}"), 'columns': ['year','state','city','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_year_state', 'sql': _build_inv_snapshot_sql(f"{_Y}, {_ST2}, {_INV_M}", f"{_Y}, {_ST2}"), 'columns': ['year','state','total_quantity_on_hand'] },
+    
+    # Dim-2: Product x Store
+    { 'table': 'olap_inv_product_store', 'sql': _build_inv_snapshot_sql(f"{_PI}, {_SK_COLS}, {_INV_M}", f"{_PI}, {_SK_COLS}"), 'columns': ['product_key','store_key','city','state','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_product_city', 'sql': _build_inv_snapshot_sql(f"{_PI}, {_CI2}, {_INV_M}", f"{_PI}, {_CI2}"), 'columns': ['product_key','state','city','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_product_state', 'sql': _build_inv_snapshot_sql(f"{_PI}, {_ST2}, {_INV_M}", f"{_PI}, {_ST2}"), 'columns': ['product_key','state','total_quantity_on_hand'] },
+    
+    # Dim-3: Time x Product x Store
+    { 'table': 'olap_inv_base', 'sql': _build_inv_snapshot_sql(f"{_M}, {_PI}, {_SK_COLS}, {_INV_M}", f"{_M}, {_PI}, {_SK_COLS}"), 'columns': ['year','quarter','month','product_key','store_key','city','state','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_month_product_city', 'sql': _build_inv_snapshot_sql(f"{_M}, {_PI}, {_CI2}, {_INV_M}", f"{_M}, {_PI}, {_CI2}"), 'columns': ['year','quarter','month','product_key','state','city','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_month_product_state', 'sql': _build_inv_snapshot_sql(f"{_M}, {_PI}, {_ST2}, {_INV_M}", f"{_M}, {_PI}, {_ST2}"), 'columns': ['year','quarter','month','product_key','state','total_quantity_on_hand'] },
+    
+    { 'table': 'olap_inv_quarter_product_store', 'sql': _build_inv_snapshot_sql(f"{_Q}, {_PI}, {_SK_COLS}, {_INV_M}", f"{_Q}, {_PI}, {_SK_COLS}"), 'columns': ['year','quarter','product_key','store_key','city','state','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_quarter_product_city', 'sql': _build_inv_snapshot_sql(f"{_Q}, {_PI}, {_CI2}, {_INV_M}", f"{_Q}, {_PI}, {_CI2}"), 'columns': ['year','quarter','product_key','state','city','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_quarter_product_state', 'sql': _build_inv_snapshot_sql(f"{_Q}, {_PI}, {_ST2}, {_INV_M}", f"{_Q}, {_PI}, {_ST2}"), 'columns': ['year','quarter','product_key','state','total_quantity_on_hand'] },
+    
+    { 'table': 'olap_inv_year_product_store', 'sql': _build_inv_snapshot_sql(f"{_Y}, {_PI}, {_SK_COLS}, {_INV_M}", f"{_Y}, {_PI}, {_SK_COLS}"), 'columns': ['year','product_key','store_key','city','state','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_year_product_city', 'sql': _build_inv_snapshot_sql(f"{_Y}, {_PI}, {_CI2}, {_INV_M}", f"{_Y}, {_PI}, {_CI2}"), 'columns': ['year','product_key','state','city','total_quantity_on_hand'] },
+    { 'table': 'olap_inv_year_product_state', 'sql': _build_inv_snapshot_sql(f"{_Y}, {_PI}, {_ST2}, {_INV_M}", f"{_Y}, {_PI}, {_ST2}"), 'columns': ['year','product_key','state','total_quantity_on_hand'] },
 ]  # end CUBE2  (32 entries)
 
 
