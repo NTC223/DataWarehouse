@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  olap-be:
+    build: ./be
+    container_name: olap-be
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=pgsql
+      - DB_PORT=5432
+      - DB_USER=admin
+      - DB_PASS=admin
+      - DB_NAME=postgres
+      - CORS_ORIGINS=http://localhost:3000,http://localhost
+    networks:
+      - data_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  olap-fe:
+    build: ./fe
+    container_name: olap-fe
+    ports:
+      - "3000:80"
+    depends_on:
+      olap-be:
+        condition: service_healthy
+    networks:
+      - data_network
+    restart: unless-stopped
+
+networks:
+  data_network:
+    external: true
