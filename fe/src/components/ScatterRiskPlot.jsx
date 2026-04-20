@@ -17,7 +17,7 @@ import React from 'react'
 import ReactECharts from 'echarts-for-react'
 import { formatNumber } from '../stores/store'
 
-function ScatterRiskPlot({ data, summary, city, onPointClick }) {
+function ScatterRiskPlot({ data, summary, city, onPointClick, timeLevel = 'month' }) {
   if (!data || data.length === 0) {
     return (
       <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">
@@ -52,10 +52,11 @@ function ScatterRiskPlot({ data, summary, city, onPointClick }) {
       formatter: function (params) {
         const productName = params.data[2]
         const coverage = params.data[3]
+        const salesLabel = 'Bán (kỳ sau)'
         return `
           <strong>${productName}</strong><br/>
-          Doanh số: ${formatNumber(params.data[0])}<br/>
-          Tồn kho kỳ trước: ${formatNumber(params.data[1])}<br/>
+          ${salesLabel}: ${formatNumber(params.data[0])}<br/>
+          Tồn kho hiện tại: ${formatNumber(params.data[1])}<br/>
           Độ đáp ứng: ${(coverage * 100).toFixed(1)}%
         `
       }
@@ -73,7 +74,7 @@ function ScatterRiskPlot({ data, summary, city, onPointClick }) {
     },
     xAxis: {
       type: 'value',
-      name: 'Tổng lượng bán (Sales)',
+      name: 'Lượng bán (kỳ sau)',
       nameLocation: 'middle',
       nameGap: 30,
       axisLabel: {
@@ -87,7 +88,7 @@ function ScatterRiskPlot({ data, summary, city, onPointClick }) {
     },
     yAxis: {
       type: 'value',
-      name: 'Lượng hàng còn lại',
+      name: 'Lượng hàng hiện tại',
       nameLocation: 'middle',
       nameGap: 50,
       axisLabel: {
@@ -199,7 +200,7 @@ function ScatterRiskPlot({ data, summary, city, onPointClick }) {
           </div>
           <p className="text-green-600 text-xs">
             Độ đáp ứng từ 80% – 120%<br />
-            Lượng hàng vừa đủ cho kỳ tới
+            Lượng hàng vừa đủ cho kỳ sau
           </p>
         </div>
 

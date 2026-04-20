@@ -64,7 +64,7 @@ function ComboChart({ data, productName, timeLevel = 'month' }) {
       }
     },
     legend: {
-      data: ['Đã bán', 'Tổng lượng hàng còn lại', 'Độ đáp ứng'],
+      data: ['Đã bán kỳ sau', 'Tổng lượng hàng còn lại', 'Độ đáp ứng'],
       bottom: 0
     },
     grid: {
@@ -106,7 +106,7 @@ function ComboChart({ data, productName, timeLevel = 'month' }) {
     ],
     series: [
       {
-        name: 'Đã bán',
+        name: 'Đã bán kỳ sau',
         type: 'bar',
         data: salesData,
         itemStyle: {
@@ -162,19 +162,19 @@ function ComboChart({ data, productName, timeLevel = 'month' }) {
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-[#799351] rounded"></div>
           <span className="text-gray-600">
-            <strong>Đã bán (kỳ sau):</strong> Số lượng đã bán ra
+            <strong>Đã bán (kỳ sau):</strong> Số lượng bán ra kì tiếp theo
           </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-[#BED393] rounded"></div>
           <span className="text-gray-600">
-            <strong>Còn lại (hiện tại):</strong> Lượng hàng còn lại cuối kỳ
+            <strong>Hiện tại:</strong> Lượng hàng tồn cuối kỳ
           </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-1 bg-[#F4A261]"></div>
           <span className="text-gray-600">
-            <strong>Độ đáp ứng:</strong> Hàng còn lại / Bán kỳ sau × 100%
+            <strong>Độ đáp ứng:</strong> Tồn hiện tại / Bán kỳ sau × 100% (Nếu không có dữ liệu kỳ sau, mặc định = 0)
           </span>
         </div>
       </div>

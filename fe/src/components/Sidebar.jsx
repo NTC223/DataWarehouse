@@ -116,10 +116,18 @@ function Sidebar() {
 
   const isExplorer = activeTab === 'explorer'
 
-  const currentFilters = isExplorer ? olapStore.fields.filters : globalFilter
-  const onUpdateSection = isExplorer ? olapStore.updateFilterSection : updateFilterSection
-  const onUpdateTopLevel = isExplorer ? olapStore.updateTopLevelFilter : updateTopLevelFilter
-  const onReset = isExplorer ? olapStore.resetFilters : resetFilter
+  // Thống nhất 1 nguồn dữ liệu: DashboardStore
+  const currentFilters = globalFilter
+  const onUpdateSection = updateFilterSection
+  const onUpdateTopLevel = updateTopLevelFilter
+  const onReset = resetFilter
+
+  // [SYNC LOGIC] Tự động fetch data cho Explorer khi filter thay đổi
+  useEffect(() => {
+    if (activeTab === 'explorer' && (olapStore.fields.rows.length > 0 || olapStore.fields.columns.length > 0)) {
+      olapStore.fetchPivotData(1)
+    }
+  }, [globalFilter, activeTab])
 
   const [productSearch, setProductSearch] = useState('')
   const [filteredProducts, setFilteredProducts] = useState([])
@@ -127,9 +135,6 @@ function Sidebar() {
   const filterOptions = data.filterOptions
 
   const getFilterValue = (section, key) => {
-    if (isExplorer) {
-      return currentFilters[key] ?? 'All'
-    }
     if (section === 'time') return currentFilters.time?.[key] ?? 'All'
     if (section === 'customer') return currentFilters.customer?.[key] ?? 'All'
     if (section === 'store') return currentFilters.store?.[key] ?? 'All'
@@ -137,7 +142,6 @@ function Sidebar() {
   }
 
   const getTopLevelValue = (key) => {
-    if (isExplorer) return currentFilters[key] ?? 'All'
     if (key === 'customer_type') return currentFilters.customer?.customer_type ?? 'All'
     if (key === 'customer_key') return String(currentFilters.customer?.customer_key ?? 'All')
     if (key === 'store_key') return String(currentFilters.store?.store_key ?? 'All')
@@ -150,7 +154,6 @@ function Sidebar() {
     activeTab === 'inventory' || (isExplorer && activeCube === 'inventory')
 
   const geoStateForCities = (() => {
-    if (isExplorer) return currentFilters.state ?? 'All'
     if (activeTab === 'inventory') return globalFilter.store?.state ?? 'All'
     return globalFilter.customer?.state ?? 'All'
   })()
@@ -197,34 +200,21 @@ function Sidebar() {
   }
 
   const customerSearchParams = useCallback(() => {
-    if (isExplorer) {
-      return {
-        state: !currentFilters.state || currentFilters.state === 'All' ? undefined : currentFilters.state,
-        city: !currentFilters.city || currentFilters.city === 'All' ? undefined : currentFilters.city,
-        customer_type: !currentFilters.customer_type || currentFilters.customer_type === 'All' ? undefined : currentFilters.customer_type
-      }
-    }
     const c = globalFilter.customer || {}
     return {
       state: c.state === 'All' ? undefined : c.state,
       city: c.city === 'All' ? undefined : c.city,
       customer_type: c.customer_type === 'All' ? undefined : c.customer_type
     }
-  }, [isExplorer, currentFilters, globalFilter])
+  }, [globalFilter])
 
   const storeSearchParams = useCallback(() => {
-    if (isExplorer) {
-      return {
-        state: !currentFilters.state || currentFilters.state === 'All' ? undefined : currentFilters.state,
-        city: !currentFilters.city || currentFilters.city === 'All' ? undefined : currentFilters.city
-      }
-    }
     const s = globalFilter.store || {}
     return {
       state: s.state === 'All' ? undefined : s.state,
       city: s.city === 'All' ? undefined : s.city
     }
-  }, [isExplorer, currentFilters, globalFilter])
+  }, [globalFilter])
 
   if (!filterOptions) {
     return (
@@ -321,8 +311,13 @@ function Sidebar() {
                 <select
                   value={getFilterValue('customer', 'state')}
                   onChange={(e) => {
-                    const v = e.target.value
-                    onUpdateSection('customer', isExplorer ? { state: v, city: 'All' } : { state: v })
+                    const newState = e.target.value
+                    const newCity = 'All'
+                    const newCustomerType = 'All'
+                    const newCustomerKey = 'All'
+                    onUpdateSection('customer', { state: newState, city: newCity })
+                    onUpdateTopLevel('customer_type', newCustomerType)
+                    onUpdateTopLevel('customer_key', newCustomerKey)
                   }}
                   className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-1 focus:ring-[#799351]"
                 >
@@ -338,6 +333,7 @@ function Sidebar() {
                   value={getFilterValue('customer', 'city')}
                   onChange={(e) => {
                     onUpdateSection('customer', { city: e.target.value })
+                    onUpdateTopLevel('customer_key', 'All')
                   }}
                   disabled={getFilterValue('customer', 'state') === 'All'}
                   className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-1 focus:ring-[#799351] disabled:bg-gray-100"
@@ -357,7 +353,9 @@ function Sidebar() {
                   name="customer_type"
                   value="All"
                   checked={getTopLevelValue('customer_type') === 'All'}
-                  onChange={(e) => onUpdateTopLevel('customer_type', e.target.value)}
+                  onChange={(e) => {
+                    onUpdateTopLevel('customer_type', e.target.value)
+                  }}
                   className="w-3.5 h-3.5 text-[#799351]"
                 />
                 <span className="ml-1.5 text-xs text-gray-700">Tất cả</span>
@@ -369,7 +367,11 @@ function Sidebar() {
                     name="customer_type"
                     value={type}
                     checked={getTopLevelValue('customer_type') === type}
-                    onChange={(e) => onUpdateTopLevel('customer_type', e.target.value)}
+                    onChange={(e) => {
+                      onUpdateSection('customer', { state: 'All', city: 'All' })
+                      onUpdateTopLevel('customer_type', e.target.value)
+                      onUpdateTopLevel('customer_key', 'All')
+                    }}
                     className="w-3.5 h-3.5 text-[#799351]"
                   />
                   <span className="ml-1.5 text-xs text-gray-700">
@@ -389,7 +391,11 @@ function Sidebar() {
               idKey="customer_key"
               formatLabel={{
                 display: (row) => `KH #${row.customer_key}`,
-                onSelect: (id) => onUpdateTopLevel('customer_key', String(id))
+                onSelect: (id) => {
+                  onUpdateSection('customer', { state: 'All', city: 'All' })
+                  onUpdateTopLevel('customer_type', 'All')
+                  onUpdateTopLevel('customer_key', String(id))
+                }
               }}
             />
             {getTopLevelValue('customer_key') !== 'All' && (
@@ -412,8 +418,7 @@ function Sidebar() {
                 <select
                   value={getFilterValue('store', 'state')}
                   onChange={(e) => {
-                    const v = e.target.value
-                    onUpdateSection('store', isExplorer ? { state: v, city: 'All' } : { state: v })
+                    onUpdateSection('store', { state: e.target.value, city: 'All' })
                   }}
                   className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-1 focus:ring-[#799351]"
                 >

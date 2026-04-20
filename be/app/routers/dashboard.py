@@ -117,6 +117,46 @@ class CustomerSegmentResponse(BaseModel):
     data: List[CustomerSegment]
 
 
+class CustomerRanking(BaseModel):
+    """Model cho xếp hạng khách hàng."""
+    customer_key: int
+    customer_name: str
+    customer_type: str
+    sum_amount: float
+    total_quantity: int
+    order_count: int
+    avg_order_value: float
+
+
+class TopCustomersResponse(BaseModel):
+    """Model cho response top customers."""
+    top_5: List[CustomerRanking]
+
+
+class CustomerTransactionLine(BaseModel):
+    """Model cho một dòng giao dịch chi tiết của khách hàng."""
+    period: str  # VD: "2024-03"
+    product_name: str
+    quantity_ordered: int
+    total_amount: float
+
+
+class PaginationInfo(BaseModel):
+    """Model cho thông tin phân trang."""
+    total_records: int
+    total_pages: int
+    current_page: int
+    page_size: int
+
+
+class CustomerDrillThroughResponse(BaseModel):
+    """Model cho response drill-through khách hàng (gộp Hover & Modal)."""
+    customer_info: Dict[str, Any]
+    summary: Dict[str, Any]
+    transactions: List[CustomerTransactionLine]
+    pagination: PaginationInfo
+
+
 # ==============================================================================
 # HELPER FUNCTIONS
 # ==============================================================================
@@ -594,7 +634,265 @@ async def get_customer_segment(filter_data: DashboardFilter):
         ]
         
         return CustomerSegmentResponse(data=segments)
-        
+
     except Exception as e:
         logger.error(f"❌ [CustomerSegment] Lỗi: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/top-customers", response_model=TopCustomersResponse)
+async def get_top_customers(filter_data: DashboardFilter):
+    """
+    Lấy Top 5 khách hàng doanh thu cao nhất.
+    Sử dụng bảng OLAP để tối ưu hiệu năng và JOIN với Dim_Customer để lấy tên.
+    """
+    try:
+        # Xây dựng điều kiện filter với alias rõ ràng.
+        # Lưu ý: customer_type lọc qua dim_customer (c) để tránh phụ thuộc cột customer_type trong OLAP cuboid location.
+        conditions: List[str] = []
+        params: List[Any] = []
+
+        # Time filters (OLAP agg có các cột time)
+        if filter_data.time.year and filter_data.time.year != "All":
+            conditions.append("agg.year = %s")
+            params.append(int(filter_data.time.year))
+        if filter_data.time.quarter and filter_data.time.quarter != "All":
+            conditions.append("agg.quarter = %s")
+            params.append(int(filter_data.time.quarter))
+        if filter_data.time.month and filter_data.time.month != "All":
+            conditions.append("agg.month = %s")
+            params.append(int(filter_data.time.month))
+
+        # Customer location filters (state/city nằm ở OLAP location cuboid)
+        cflt = filter_data.customer
+        if cflt.state and cflt.state != "All":
+            conditions.append("agg.state = %s")
+            params.append(cflt.state)
+        if cflt.city and cflt.city != "All":
+            conditions.append("agg.city = %s")
+            params.append(cflt.city)
+
+        # customer_type lọc qua dimension
+        if cflt.customer_type and cflt.customer_type != "All":
+            conditions.append("c.customer_type = %s")
+            params.append(cflt.customer_type)
+
+        # customer_key nếu filter 1 khách cụ thể (OLAP có customer_key)
+        if cflt.customer_key and cflt.customer_key != "All":
+            conditions.append("agg.customer_key = %s")
+            params.append(int(cflt.customer_key))
+
+        where_clause = ""
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+        # Chọn bảng OLAP: bỏ qua customer_type khi chọn cuboid vì customer_type lọc qua dim_customer.
+        filter_for_table = DashboardFilter(
+            time=filter_data.time,
+            customer=CustomerFilter(
+                state=filter_data.customer.state,
+                city=filter_data.customer.city,
+                customer_type="All",
+                customer_key=filter_data.customer.customer_key,
+            ),
+            product_key="All",  # top customers không group theo product
+        )
+
+        table_name = select_sales_olap_table_for_dashboard(
+            filter_for_table, extra_columns={"customer_key"}
+        )
+        full_table_name = f"{OLAP_SCHEMA}.{table_name}"
+
+        logger.info(f"[TopCustomers] Sử dụng bảng: {table_name}")
+
+        # SQL lấy Top 5 khách hàng
+        # JOIN với dwh.dim_customer để có thông tin định danh
+        sql = f"""
+            SELECT 
+                agg.customer_key,
+                c.customer_name,
+                c.customer_type,
+                SUM(agg.sum_amount) as sum_amount,
+                SUM(agg.total_quantity) as total_quantity
+            FROM {full_table_name} agg
+            JOIN dwh.dim_customer c ON agg.customer_key = c.customer_key
+            {where_clause}
+            GROUP BY agg.customer_key, c.customer_name, c.customer_type
+            ORDER BY sum_amount DESC
+            LIMIT 5
+        """.strip()
+
+        # Thực thi query
+        results = execute_query(sql, tuple(params))
+
+        # Vì OLAP cuboid hiện tại có thể không có COUNT(order), 
+        # chúng ta sẽ giả lập order_count = total_quantity hoặc để tạm.
+        # Hoặc nếu cần chính xác, có thể query thêm từ fact_sales (nhưng tốn resource hơn).
+        
+        top_5 = [
+            CustomerRanking(
+                customer_key=int(row["customer_key"]),
+                customer_name=row["customer_name"],
+                customer_type=row["customer_type"],
+                sum_amount=float(row["sum_amount"]),
+                total_quantity=int(row["total_quantity"]),
+                order_count=0,  # Sẽ cập nhật sau nếu cần thiết
+                avg_order_value=float(row["sum_amount"])  # Tạm thời là tổng
+            )
+            for row in results
+        ]
+
+        return TopCustomersResponse(top_5=top_5)
+
+    except Exception as e:
+        logger.error(f"❌ [TopCustomers] Lỗi: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/customer-drill-through/{customer_key}", response_model=CustomerDrillThroughResponse)
+async def get_customer_drill_through(
+    customer_key: int,
+    year: Optional[str] = "All",
+    quarter: Optional[str] = "All",
+    month: Optional[str] = "All",
+    state: Optional[str] = "All",
+    city: Optional[str] = "All",
+    customer_type: Optional[str] = "All",
+    page: int = 1,
+    page_size: int = 5
+):
+    """
+    Endpoint Drill-through duy nhất:
+    - Trả về thông tin khách hàng
+    - Trả về thống kê tổng quát (Summary) dựa trên filter
+    - Trả về danh sách giao dịch chi tiết (Transactions) có phân trang
+    """
+    try:
+        # 1. Lấy thông tin khách hàng từ Dim_Customer
+        customer_sql = """
+            SELECT 
+                c.customer_key, c.customer_name, c.customer_type, c.first_order_date,
+                l.city, l.state
+            FROM dwh.dim_customer c
+            LEFT JOIN dwh.dim_location l ON c.location_key = l.location_key
+            WHERE c.customer_key = %s
+        """
+        cust_res = execute_query(customer_sql, (customer_key,), fetch_all=False)
+        if not cust_res:
+            raise HTTPException(status_code=404, detail="Không tìm thấy khách hàng")
+        
+        customer_info = dict(cust_res[0])
+        customer_info["location"] = f"{customer_info['city']}, {customer_info['state']}"
+        customer_info["first_order_date"] = str(customer_info["first_order_date"])
+
+        # 2. Xây dựng điều kiện WHERE cho giao dịch
+        conditions = ["f.customer_key = %s"]
+        params = [customer_key]
+
+        if year != "All":
+            conditions.append("t.year = %s")
+            params.append(int(year))
+        if quarter != "All":
+            conditions.append("t.quarter = %s")
+            params.append(int(quarter))
+        if month != "All":
+            conditions.append("t.month = %s")
+            params.append(int(month))
+        # customer_type/state/city là thuộc tính của Customer (dim_customer -> dim_location)
+        if customer_type != "All":
+            conditions.append("c.customer_type = %s")
+            params.append(customer_type)
+        if state != "All":
+            conditions.append("l.state = %s")
+            params.append(state)
+        # Lưu ý: l.city có thể conflict nếu join nhiều, nhưng ở đây dùng prefix rõ ràng
+        if city != "All":
+            conditions.append("l.city = %s")
+            params.append(city)
+
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        # 3. Lấy tổng số bản ghi để phân trang
+        count_sql = f"""
+            SELECT COUNT(*) as total
+            FROM dwh.fact_sales f
+            JOIN dwh.dim_time t ON f.time_key = t.time_key
+            JOIN dwh.dim_customer c ON f.customer_key = c.customer_key
+            LEFT JOIN dwh.dim_location l ON c.location_key = l.location_key
+            {where_clause}
+        """
+        # Lưu ý: state/city ở đây là location của Customer (đúng theo sidebar Sales).
+        
+        total_res = execute_query(count_sql, tuple(params), fetch_all=False)
+        total_records = int(total_res[0]["total"])
+        total_pages = (total_records + page_size - 1) // page_size
+
+        # 4. Lấy Summary Stats
+        summary_sql = f"""
+            SELECT 
+                COALESCE(SUM(f.total_amount), 0) as total_revenue,
+                COALESCE(SUM(f.quantity_ordered), 0) as total_quantity,
+                COUNT(*) as order_count,
+                AVG(f.total_amount) as avg_amount,
+                MAX(t.year || '-' || LPAD(t.month::text, 2, '0')) as last_order
+            FROM dwh.fact_sales f
+            JOIN dwh.dim_time t ON f.time_key = t.time_key
+            JOIN dwh.dim_customer c ON f.customer_key = c.customer_key
+            LEFT JOIN dwh.dim_location l ON c.location_key = l.location_key
+            {where_clause}
+        """
+        summ_res = execute_query(summary_sql, tuple(params), fetch_all=False)
+        summary = {
+            "total_revenue": float(summ_res[0]["total_revenue"]),
+            "total_quantity": int(summ_res[0]["total_quantity"]),
+            "order_count": int(summ_res[0]["order_count"]),
+            "avg_amount_per_order": float(summ_res[0]["avg_amount"] or 0),
+            "last_order_date": summ_res[0]["last_order"] or "N/A"
+        }
+
+        # 5. Lấy danh sách giao dịch chi tiết (phân trang)
+        offset = (page - 1) * page_size
+        
+        transactions_sql = f"""
+            SELECT
+                t.year || '-' || LPAD(t.month::text, 2, '0') as period,
+                p.description as product_name,
+                f.quantity_ordered,
+                f.total_amount
+            FROM dwh.fact_sales f
+            JOIN dwh.dim_time t ON f.time_key = t.time_key
+            JOIN dwh.dim_product p ON f.product_key = p.product_key
+            JOIN dwh.dim_customer c ON f.customer_key = c.customer_key
+            LEFT JOIN dwh.dim_location l ON c.location_key = l.location_key
+            {where_clause}
+            ORDER BY f.time_key DESC, p.description ASC
+            LIMIT %s OFFSET %s
+        """
+        trans_params = params + [page_size, offset]
+        trans_results = execute_query(transactions_sql, tuple(trans_params))
+
+        transactions = [
+            CustomerTransactionLine(
+                period=row["period"],
+                product_name=row["product_name"],
+                quantity_ordered=int(row["quantity_ordered"]),
+                total_amount=float(row["total_amount"])
+            )
+            for row in trans_results
+        ]
+
+        return CustomerDrillThroughResponse(
+            customer_info=customer_info,
+            summary=summary,
+            transactions=transactions,
+            pagination=PaginationInfo(
+                total_records=total_records,
+                total_pages=total_pages,
+                current_page=page,
+                page_size=page_size
+            )
+        )
+
+    except Exception as e:
+        logger.error(f"❌ [CustomerDrillThrough] Lỗi: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

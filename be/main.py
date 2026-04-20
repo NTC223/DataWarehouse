@@ -31,14 +31,14 @@ async def lifespan(app: FastAPI):
     - Shutdown: Đóng kết nối, dọn dẹp tài nguyên
     """
     # ===== STARTUP =====
-    print("🚀 [STARTUP] Đang khởi tạo Data Warehouse Dashboard API...")
-    print("✅ [STARTUP] Khởi tạo thành công!")
+    print("[STARTUP] Initializing Data Warehouse Dashboard API...")
+    print("[STARTUP] Initialization successful!")
     
     yield  # Ứng dụng chạy ở đây
     
     # ===== SHUTDOWN =====
-    print("🛑 [SHUTDOWN] Đang đóng ứng dụng...")
-    print("✅ [SHUTDOWN] Đã dọn dẹp tài nguyên!")
+    print("[SHUTDOWN] Closing application...")
+    print("[SHUTDOWN] Resources cleaned up!")
 
 
 # ==============================================================================
@@ -51,6 +51,7 @@ app = FastAPI(
     - Dashboard Sales với KPI cards, trend charts, drill-down
     - Dashboard Inventory với Drill-Across analysis
     - OLAP Explorer với Pivot Table và Cuboid Routing
+
     
     ## Các endpoint chính:
     
@@ -70,6 +71,7 @@ app = FastAPI(
     ### OLAP Explorer
     - `POST /api/olap/explore` - Pivot table với Cuboid Routing
     - `POST /api/olap/raw-data` - Dữ liệu thô có phân trang
+    
     
     ### Filters
     - `GET /api/filters/init` - Lấy tất cả dữ liệu filter khởi tạo

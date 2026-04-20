@@ -254,7 +254,7 @@ function InventoryDashboard({ filters }) {
                   <tr className="bg-gray-50 text-gray-600 uppercase text-[11px]">
                     <th className="px-3 py-1.5 text-left">Sản phẩm</th>
                     <th className="px-3 py-1.5 text-right">Còn lại</th>
-                    <th className="px-3 py-1.5 text-right">Bán (kỳ sau)</th>
+                    <th className="px-3 py-1.5 text-right">Bán {derivedTimeLevel() === 'month' ? '(kỳ sau)' : '(cùng kỳ)'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -406,7 +406,7 @@ function InventoryDashboard({ filters }) {
                   <tr className="bg-gray-50 text-gray-600 uppercase text-[11px]">
                     <th className="px-3 py-1.5 text-left">Sản phẩm</th>
                     <th className="px-3 py-1.5 text-right">Còn lại</th>
-                    <th className="px-3 py-1.5 text-right">Bán (kỳ sau)</th>
+                    <th className="px-3 py-1.5 text-right">Bán {derivedTimeLevel() === 'month' ? '(kỳ sau)' : '(cùng kỳ)'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -455,6 +455,7 @@ function InventoryDashboard({ filters }) {
             data={scatterData?.data}
             summary={scatterData?.summary}
             city={scatterData?.city}
+            timeLevel={derivedTimeLevel()}
             onPointClick={setSelectedProduct}
           />
         )}
@@ -541,17 +542,17 @@ function InventoryDashboard({ filters }) {
         <div className="bg-gradient-to-br from-[#799351]/10 to-white rounded-xl p-5 border border-[#799351]/20 shadow-sm transform transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
           <h4 className="font-bold text-[#799351] mb-2 flex items-center gap-2"><span>📊</span> Độ đáp ứng (Coverage Ratio)</h4>
           <p className="text-sm text-[#3A5A40]/80">
-            Độ đáp ứng = Lượng hàng còn lại cuối kỳ / Số lượng bán ra của kỳ tiếp theo. Chỉ số này cho biết lượng hàng hiện tại có đủ sức gánh vác nhu cầu của tương lai hay không.
+            Độ đáp ứng = Lượng hàng {derivedTimeLevel() === 'month' ? 'hiện tại / Số lượng bán ra của kỳ tiếp theo' : 'hiện tại / Số lượng bán ra của cùng kỳ'}. Chỉ số này cho biết khả năng đáp ứng nhu cầu {derivedTimeLevel() === 'month' ? 'tương lai' : 'hiện tại'} từ lượng hàng tồn kho.
           </p>
         </div>
 
         <div className="bg-gradient-to-br from-[#F4A261]/10 to-white rounded-xl p-5 border border-[#F4A261]/30 shadow-sm transform transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
           <h4 className="font-bold text-[#D68C45] mb-2 flex items-center gap-2"><span>⚠️</span> Phân loại rủi ro</h4>
-          <p className="text-sm text-[#D68C45]/80 space-y-2 mt-1">
-            <span className="block"><strong className="text-[#F4A261]">Dư thừa (Overstock):</strong> Lượng hàng còn lại vượt quá 120% nhu cầu của tháng sau. Cần xem xét giảm nhập.</span>
-            <span className="block"><strong className="text-[#E76F51]">Nguy cơ thiếu hụt (Understock):</strong> Lượng hàng còn lại không đủ đáp ứng nhu cầu tháng sau (Độ đáp ứng &lt; 80%). Cần nhập gấp.</span>
+          <div className="text-sm text-[#3A5A40]/80 space-y-2 mt-1">
+            <span className="block"><strong className="text-[#F4A261]">Dư thừa (Overstock):</strong> Lượng hàng còn lại vượt quá 120% nhu cầu {derivedTimeLevel() === 'month' ? 'của tháng sau' : 'cùng kỳ'}. Cần xem xét giảm nhập.</span>
+            <span className="block"><strong className="text-[#E76F51]">Nguy cơ thiếu hụt (Understock):</strong> Lượng hàng không đủ đáp ứng nhu cầu {derivedTimeLevel() === 'month' ? 'tháng sau' : 'cùng kỳ'} (Độ đáp ứng &lt; 80%). Cần nhập thêm.</span>
             <span className="block"><strong className="text-[#799351]">Tối ưu (Optimal):</strong> Lượng hàng vừa đủ, dao động từ 80% - 120%.</span>
-          </p>
+          </div>
         </div>
       </div>
     </div>

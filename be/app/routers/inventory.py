@@ -350,13 +350,11 @@ def merge_sales_inventory(
     Gộp dữ liệu Sales và Inventory theo time_key.
     Sử dụng Full Outer Join logic.
 
-    Coverage Ratio (Độ đáp ứng) - Tạm thời dùng đồng kỳ (Snapshot):
-        coverage_ratio[T] = total_quantity_on_hand[T] / total_quantity[T]
+    Coverage Ratio (Độ đáp ứng) - Forward-looking:
+        coverage_ratio[T] = total_quantity_on_hand[T] / total_quantity[T+1]
     
-    # Logic cũ (Forward-looking): 
-    # coverage_ratio[T] = total_quantity_on_hand[T] / total_quantity[T+1]
-    
-    - Nếu total_quantity[T] == 0 hoặc None: coverage_ratio = None
+    - Nếu T là kỳ cuối cùng (không có T+1): coverage_ratio = None
+    - Nếu total_quantity[T+1] == 0 hoặc None: coverage_ratio = None
 
     Args:
         sales_data: Dữ liệu từ Cube Sales
@@ -400,30 +398,30 @@ def merge_sales_inventory(
             'coverage_ratio': None  # Sẽ được tính ở bước 2
         })
 
-    # Bước 2: Tính coverage_ratio (Tạm thời dùng đồng kỳ T / T theo yêu cầu)
-    # Logic: Hàng còn lại trong tháng / Doanh số trong tháng
+    # Bước 2: Tính coverage_ratio và Dịch chuyển Sales hiển thị sang T+1 (Forward-looking)
     for i in range(len(merged)):
-        qty_on_hand = merged[i]['total_quantity_on_hand']
-        qty_sales = merged[i]['total_quantity']
-        
-        if not qty_sales:
-            merged[i]['coverage_ratio'] = None
-        else:
-            merged[i]['coverage_ratio'] = round(qty_on_hand / qty_sales, 2)
+        qty_on_hand_current = merged[i]['total_quantity_on_hand']
 
-    # --- LOGIC CŨ (Bản gốc T / T+1) ---
-    # for i in range(len(merged)):
-    #     qty_on_hand_current = merged[i]['total_quantity_on_hand']
-    #     # Nếu không có kỳ tiếp theo → None
-    #     if i + 1 >= len(merged):
-    #         merged[i]['coverage_ratio'] = None
-    #         continue
-    #     qty_ordered_next = merged[i + 1]['total_quantity']
-    #     # Nếu kỳ tiếp theo không có doanh số (0 hoặc None) → tránh chia 0
-    #     if not qty_ordered_next:
-    #         merged[i]['coverage_ratio'] = None
-    #     else:
-    #         merged[i]['coverage_ratio'] = round(qty_on_hand_current / qty_ordered_next, 2)
+        # Quy định: Nếu không có kỳ tiếp theo → gán 0 (tránh nhầm lẫn với kỳ hiện tại T)
+        if i + 1 >= len(merged):
+            merged[i]['coverage_ratio'] = 0.0
+            merged[i]['total_quantity'] = 0.0
+            merged[i]['sum_amount'] = 0.0
+            continue
+
+        qty_ordered_next = merged[i + 1]['total_quantity']
+        sum_amount_next = merged[i + 1]['sum_amount']
+
+        # Nếu kỳ tiếp theo không có doanh số (0 hoặc None) → tránh chia 0
+        if not qty_ordered_next:
+            merged[i]['coverage_ratio'] = 0.0
+        else:
+            merged[i]['coverage_ratio'] = round(qty_on_hand_current / qty_ordered_next, 2)
+            
+        # Cập nhật giá trị Sales của bản ghi hiện tại thành giá trị của kỳ sau (T+1)
+        # Điều này giúp thanh biểu đồ "Sales kỳ sau" khớp với phép tính và nhãn
+        merged[i]['total_quantity'] = qty_ordered_next
+        merged[i]['sum_amount'] = sum_amount_next
 
     return merged
 
@@ -536,23 +534,40 @@ async def get_product_analysis(
 ):
     """
     Phân tích chi tiết 1 sản phẩm - Drill-Across Sales và Inventory.
-    
-    Trả về dữ liệu gộp với:
-    - total_quantity (từ Sales Cube)
-    - total_quantity_on_hand (từ Inventory Cube)
-    - coverage_ratio = total_quantity_on_hand / total_quantity (kỳ sau)
     """
     try:
         logger.info(f"[Inventory Analysis] Product: {product_id}, City: {city}, Time: {time_level.value}")
         
+        # Xác định tham số lọc cho Sales - LUÔN DÙNG T+1 (Kỳ sau)
+        sales_year = year
+        sales_quarter = quarter
+        sales_month = month
+        
+        if time_level == TimeLevel.MONTH and month and year:
+            sales_month = month + 1
+            if sales_month > 12:
+                sales_month = 1
+                sales_year = year + 1
+            sales_quarter = (sales_month - 1) // 3 + 1
+            logger.info(f"[Inventory Analysis] Shifted Month for T+1: {sales_year}-M{sales_month}")
+        elif time_level == TimeLevel.QUARTER and quarter and year:
+            sales_quarter = quarter + 1
+            if sales_quarter > 4:
+                sales_quarter = 1
+                sales_year = year + 1
+            logger.info(f"[Inventory Analysis] Shifted Quarter for T+1: {sales_year}-Q{sales_quarter}")
+        elif time_level == TimeLevel.YEAR and year:
+            sales_year = year + 1
+            logger.info(f"[Inventory Analysis] Shifted Year for T+1: {sales_year}")
+
         # Query song song 2 Cube
         sales_data = query_cube_sales(
             product_key=product_id,
             city=city,
             state=state,
-            year=year,
-            quarter=quarter,
-            month=month,
+            year=sales_year,
+            quarter=sales_quarter,
+            month=sales_month,
             group_by_time=time_level.value
         )
         
@@ -567,8 +582,45 @@ async def get_product_analysis(
             group_by_time=time_level.value
         )
         
-        # Gộp dữ liệu
-        merged_data = merge_sales_inventory(sales_data, inventory_data, time_level.value)
+        # Gộp dữ liệu cho trường hợp lọc một kỳ cụ thể (Month/Quarter/Year)
+        # Ta cần hiển thị Inventory của kỳ [T] và Sales của kỳ [T+1] trên cùng một nhãn thời gian của kỳ [T]
+        is_single_filter = (
+            (time_level == TimeLevel.MONTH and month and year) or
+            (time_level == TimeLevel.QUARTER and quarter and year) or
+            (time_level == TimeLevel.YEAR and year)
+        )
+
+        if is_single_filter:
+            inv_row = inventory_data[0] if inventory_data else None
+            sales_row = sales_data[0] if sales_data else None
+            
+            # Tạo nhãn thời gian cho kỳ [T]
+            if time_level == TimeLevel.MONTH:
+                time_key = f"{year}-{quarter}-{month}"
+            elif time_level == TimeLevel.QUARTER:
+                time_key = f"{year}-{quarter}"
+            else:
+                time_key = str(year)
+                
+            merged_data = [{
+                'time_key': time_key,
+                'year': year,
+                'quarter': quarter,
+                'month': month,
+                'total_quantity': float(sales_row['total_quantity'] if sales_row else 0),
+                'sum_amount': float(sales_row['sum_amount'] if sales_row else 0),
+                'total_quantity_on_hand': float(inv_row['total_quantity_on_hand'] if inv_row else 0),
+                'coverage_ratio': 0.0
+            }]
+            
+            # Tính ratio: Inventory[T] / Sales[T+1]
+            q_inv = merged_data[0]['total_quantity_on_hand']
+            q_sales_next = merged_data[0]['total_quantity']
+            if q_sales_next > 0:
+                merged_data[0]['coverage_ratio'] = round(q_inv / q_sales_next, 2)
+        else:
+            # Trường hợp xem trend (không filter tháng cụ thể hoặc xem theo Quý/Năm)
+            merged_data = merge_sales_inventory(sales_data, inventory_data, time_level.value)
         
         return ProductAnalysisResponse(
             product_key=product_id,
@@ -657,26 +709,62 @@ async def get_scatter_data(
             _inv_store_granule_rank,
         )
 
-        conditions = []
-        params = []
+        # Xây dựng target period cho Sales (Dự báo T+1 cho tất cả các cấp)
+        target_sales_year = year
+        target_sales_quarter = quarter
+        target_sales_month = month
+        is_forward_looking = False
         
+        # Nếu người dùng có filter thời gian cụ thể, ta mới dịch chuyển target_sales
+        if time_level := (TimeLevel.MONTH if month else TimeLevel.QUARTER if quarter else TimeLevel.YEAR if year else None):
+            is_forward_looking = True
+            if time_level == TimeLevel.MONTH:
+                target_sales_month = month + 1
+                if target_sales_month > 12:
+                    target_sales_month = 1
+                    target_sales_year = year + 1
+            elif time_level == TimeLevel.QUARTER:
+                target_sales_quarter = quarter + 1
+                if target_sales_quarter > 4:
+                    target_sales_quarter = 1
+                    target_sales_year = year + 1
+            elif time_level == TimeLevel.YEAR:
+                target_sales_year = year + 1
+            
+            logger.info(f"[Scatter Data] Forward-looking {time_level.value}: Sales Target Period {target_sales_year}-{target_sales_quarter or ''}-{target_sales_month or ''}")
+        
+        # Query Sales
+        sales_conditions = []
+        sales_params = []
         if city:
-            conditions.append("city = %s")
-            params.append(city)
+            sales_conditions.append("city = %s")
+            sales_params.append(city)
         if state:
-            conditions.append("state = %s")
-            params.append(state)
-        if year:
-            conditions.append("year = %s")
-            params.append(year)
-        if quarter:
-            conditions.append("quarter = %s")
-            params.append(quarter)
-        if month:
-            conditions.append("month = %s")
-            params.append(month)
+            sales_conditions.append("state = %s")
+            sales_params.append(state)
         
-        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        if is_forward_looking:
+            if year: # Nếu có filter year
+                sales_conditions.append("year = %s")
+                sales_params.append(target_sales_year)
+            if quarter: # Nếu có filter quarter
+                sales_conditions.append("quarter = %s")
+                sales_params.append(target_sales_quarter)
+            if month: # Nếu có filter month
+                sales_conditions.append("month = %s")
+                sales_params.append(target_sales_month)
+        else:
+            if year:
+                sales_conditions.append("year = %s")
+                sales_params.append(year)
+            if quarter:
+                sales_conditions.append("quarter = %s")
+                sales_params.append(quarter)
+            if month:
+                sales_conditions.append("month = %s")
+                sales_params.append(month)
+        
+        sales_where = "WHERE " + " AND ".join(sales_conditions) if sales_conditions else ""
         
         # Query Sales
         sql_sales = f"""
@@ -685,12 +773,13 @@ async def get_scatter_data(
                 SUM(total_quantity) as total_quantity,
                 SUM(sum_amount) as sum_amount
             FROM {OLAP_SCHEMA}.{sales_table}
-            {where_clause}
+            {sales_where}
             GROUP BY product_key
         """.strip()
         
-        sales_results = execute_query(sql_sales, tuple(params) if params else None)
+        sales_results = execute_query(sql_sales, tuple(sales_params) if sales_params else None)
         
+        # Query Inventory (Luôn là kỳ hiện tại)
         inv_conditions = []
         inv_params = []
         

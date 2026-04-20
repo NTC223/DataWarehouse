@@ -23,8 +23,14 @@ function Dashboard() {
     handleChartDrillDown,
     handleChartRollUp,
     globalFilter,
-    updateTopLevelFilter
+    updateTopLevelFilter,
+    fetchDrillThrough
   } = useDashboardStore()
+
+  const [modalOpen, setModalOpen] = React.useState(false)
+  const [modalData, setModalData] = React.useState(null)
+  const [modalLoading, setModalLoading] = React.useState(false)
+  const [selectedCustKey, setSelectedCustKey] = React.useState(null)
 
   const isProductFiltered = selectIsProductFiltered({ globalFilter })
   const isCustomerFiltered = selectIsCustomerFiltered({ globalFilter })
@@ -295,98 +301,316 @@ function Dashboard() {
   // ============================================================================
   // TOP/BOTTOM PRODUCTS TABLES
   // ============================================================================
-  const ProductRankings = () => {
-    // Ẩn nếu đã filter product cụ thể
-    if (isProductFiltered) return null
+  const Top5ProductsTable = () => {
+    if (isProductFiltered || !data.topProducts) return null
+    const { top_5 } = data.topProducts
+    return (
+      <div className="chart-container">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">🏆 Top 5 sản phẩm cao</h3>
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th className="w-16">#</th>
+                <th>Sản phẩm</th>
+                <th className="text-right">Doanh thu</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top_5.map((product, index) => (
+                <tr key={product.product_key} onClick={() => updateTopLevelFilter('product_key', product.product_key.toString())} className="cursor-pointer hover:bg-green-50 transition-colors">
+                  <td>{index + 1}</td>
+                  <td>{product.product_name}</td>
+                  <td className="text-right font-medium text-green-600">{formatCurrency(product.sum_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
 
-    if (!data.topProducts) return null
+  const Bottom5ProductsTable = () => {
+    if (isProductFiltered || !data.topProducts) return null
+    const { bottom_5 } = data.topProducts
+    return (
+      <div className="chart-container">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">📉 Top 5 sản phẩm thấp</h3>
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th className="w-16">#</th>
+                <th>Sản phẩm</th>
+                <th className="text-right">Doanh thu</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bottom_5.map((product, index) => (
+                <tr key={product.product_key} onClick={() => updateTopLevelFilter('product_key', product.product_key.toString())} className="cursor-pointer hover:bg-red-50 transition-colors">
+                  <td>{index + 1}</td>
+                  <td>{product.product_name}</td>
+                  <td className="text-right font-medium text-red-600">{formatCurrency(product.sum_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
 
-    const { top_5, bottom_5 } = data.topProducts
+  // ============================================================================
+  // TOP CUSTOMERS TABLE (Ranking + Drill-through)
+  // ============================================================================
+  const TopCustomersTable = () => {
+    if (loading.topCustomers) {
+      return (
+        <div className="chart-container h-80 flex items-center justify-center">
+          <LoadingSpinner size="lg" />
+        </div>
+      )
+    }
+
+    if (!data.topCustomers?.top_5?.length) return null
+
+    const handleRowClick = async (customerKey) => {
+      setSelectedCustKey(customerKey)
+      setModalOpen(true)
+      setModalLoading(true)
+      try {
+        const result = await fetchDrillThrough(customerKey, 1, 15) // Page 1, size 15 for modal init
+        setModalData(result)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setModalLoading(false)
+      }
+    }
 
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top 5 */}
-        <div className="chart-container">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            🏆 Top 5 sản phẩm doanh thu cao
-          </h3>
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="w-16">#</th>
-                  <th>Sản phẩm</th>
-                  <th className="text-right">Doanh thu</th>
-                  <th className="text-right">Số lượng</th>
+      <div className="chart-container relative">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+          👤 Top 5 khách hàng doanh thu cao
+          
+        </h3>
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th className="w-16">#</th>
+                <th>Khách hàng</th>
+                <th>Loại</th>
+                <th className="text-right">Doanh thu</th>
+                <th className="text-right">Sản phẩm</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.topCustomers.top_5.map((customer, index) => (
+                <tr
+                  key={customer.customer_key}
+                  onClick={() => handleRowClick(customer.customer_key)}
+                  className="cursor-pointer hover:bg-blue-50 transition-colors group"
+                >
+                  <td>
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 group-hover:bg-blue-200 text-blue-700 text-sm font-bold transition-colors">
+                      {index + 1}
+                    </span>
+                  </td>
+                  <td className="font-medium">{customer.customer_name}</td>
+                  <td>
+                    <span className={`px-2 py-1 rounded-full text-xs ${
+                      customer.customer_type === 'Tourist' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'
+                    }`}>
+                      {customer.customer_type}
+                    </span>
+                  </td>
+                  <td className="text-right font-bold text-blue-600">
+                    {formatCurrency(customer.sum_amount)}
+                  </td>
+                  <td className="text-right">
+                    {formatNumber(customer.total_quantity)}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {top_5.map((product, index) => (
-                  <tr
-                    key={product.product_key}
-                    onClick={() => updateTopLevelFilter('product_key', product.product_key.toString())}
-                    className="cursor-pointer hover:bg-green-50 transition-colors group"
-                    title="Click để lọc Dashboard theo sản phẩm này"
-                  >
-                    <td>
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-yellow-100 group-hover:bg-yellow-200 text-yellow-700 text-sm font-bold transition-colors">
-                        {index + 1}
-                      </span>
-                    </td>
-                    <td>{product.product_name}</td>
-                    <td className="text-right font-medium text-green-600">
-                      {formatCurrency(product.sum_amount)}
-                    </td>
-                    <td className="text-right">
-                      {formatNumber(product.total_quantity)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
+      </div>
+    )
+  }
 
-        {/* Bottom 5 */}
-        <div className="chart-container">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            📉 Top 5 sản phẩm doanh thu thấp
-          </h3>
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="w-16">#</th>
-                  <th>Sản phẩm</th>
-                  <th className="text-right">Doanh thu</th>
-                  <th className="text-right">Số lượng</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bottom_5.map((product, index) => (
-                  <tr
-                    key={product.product_key}
-                    onClick={() => updateTopLevelFilter('product_key', product.product_key.toString())}
-                    className="cursor-pointer hover:bg-red-50 transition-colors group"
-                    title="Click để lọc Dashboard theo sản phẩm này"
-                  >
-                    <td>
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 group-hover:bg-red-200 text-red-700 text-sm font-bold transition-colors">
-                        {index + 1}
-                      </span>
-                    </td>
-                    <td>{product.product_name}</td>
-                    <td className="text-right font-medium text-red-600">
-                      {formatCurrency(product.sum_amount)}
-                    </td>
-                    <td className="text-right">
-                      {formatNumber(product.total_quantity)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+  // ============================================================================
+  // DRILL-THROUGH MODAL
+  // ============================================================================
+  const CustomerDrillThroughModal = () => {
+    if (!modalOpen) return null
+
+    const handleClose = () => {
+      setModalOpen(false)
+      setModalData(null)
+    }
+
+    const changePage = async (page) => {
+      setModalLoading(true)
+      try {
+        const result = await fetchDrillThrough(selectedCustKey, page, 15)
+        setModalData(result)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setModalLoading(false)
+      }
+    }
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col scale-100 animate-in zoom-in-95 duration-300">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-[#799351] to-[#588157] p-6 text-white flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold">{modalData?.customer_info?.customer_name || 'Đang tải...'}</h2>
+              <p className="opacity-80 flex items-center gap-2 mt-1">
+                <span>📍 {modalData?.customer_info?.location}</span>
+                <span>•</span>
+                <span>🏷️ {modalData?.customer_info?.customer_type}</span>
+                <span>•</span>
+                <span>📅 Khách hàng từ: {modalData?.customer_info?.first_order_date}</span>
+              </p>
+            </div>
+            <button 
+              onClick={handleClose}
+              className="p-2 hover:bg-white/20 rounded-full transition-colors text-2xl"
+            >
+              ✕
+            </button>
           </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            {!modalData && modalLoading ? (
+               <div className="h-64 flex items-center justify-center">
+                  <LoadingSpinner size="lg" />
+               </div>
+            ) : modalData ? (
+              <div className="space-y-6">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-[#799351]/10 p-4 rounded-xl border border-[#799351]/20">
+                    <p className="text-xs text-[#588157] font-bold uppercase mb-1">Tổng doanh thu</p>
+                    <p className="text-xl font-black text-[#3A5A40]">{formatCurrency(modalData.summary.total_revenue)}</p>
+                  </div>
+                  <div className="bg-[#F4A261]/10 p-4 rounded-xl border border-[#F4A261]/20">
+                    <p className="text-xs text-[#F4A261] font-bold uppercase mb-1">Số lượng sản phẩm đã mua</p>
+                    <p className="text-xl font-black text-[#6B4E16]">{formatNumber(modalData.summary.total_quantity)}</p>
+                  </div>
+                  <div className="bg-[#E76F51]/10 p-4 rounded-xl border border-[#E76F51]/20">
+                    <p className="text-xs text-[#E76F51] font-bold uppercase mb-1">Tổng số dòng giao dịch</p>
+                    <p className="text-xl font-black text-[#7A2E1E]">{modalData.summary.order_count}</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <p className="text-xs text-gray-600 font-bold uppercase mb-1">Giao dịch cuối cùng</p>
+                    <p className="text-xl font-black text-gray-900">{modalData.summary.last_order_date}</p>
+                  </div>
+                </div>
+
+                {/* History Table */}
+                <div className="border rounded-xl overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                    <h4 className="font-bold text-gray-700">Lịch sử giao dịch chi tiết</h4>
+                    <span className="text-sm text-gray-500">Hiển thị {modalData.transactions.length} / {modalData.pagination.total_records} bản ghi</span>
+                  </div>
+                  <div className="relative">
+                    {modalLoading && (
+                      <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
+                        <LoadingSpinner size="md" />
+                      </div>
+                    )}
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-600 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Thời gian</th>
+                          <th className="px-4 py-3 text-left">Sản phẩm</th>
+                          <th className="px-4 py-3 text-right">Số lượng</th>
+                          <th className="px-4 py-3 text-right">Giá trị</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {modalData.transactions.map((t, i) => (
+                          <tr key={i} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3 font-medium text-gray-900">{t.period}</td>
+                            <td className="px-4 py-3 text-gray-600">{t.product_name}</td>
+                            <td className="px-4 py-3 text-right text-gray-600">{formatNumber(t.quantity_ordered)}</td>
+                            <td className="px-4 py-3 text-right font-bold text-gray-900">{formatCurrency(t.total_amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Pagination */}
+                <div className="flex justify-between items-center py-4">
+                  <button 
+                    disabled={modalData.pagination.current_page === 1 || modalLoading}
+                    onClick={() => changePage(modalData.pagination.current_page - 1)}
+                    className="btn btn-secondary px-4 py-2 disabled:opacity-30"
+                  >
+                    ← Trước
+                  </button>
+                  <div className="flex gap-2">
+                    {Array.from({ length: Math.min(5, modalData.pagination.total_pages) }, (_, i) => {
+                      const p = modalData.pagination.current_page <= 3 
+                        ? i + 1 
+                        : Math.min(modalData.pagination.current_page - 2 + i, modalData.pagination.total_pages - 4 + i > 0 ? modalData.pagination.total_pages - 4 + i : 1 + i);
+                      
+                      return p <= modalData.pagination.total_pages ? (
+                        <button
+                          key={p}
+                          onClick={() => changePage(p)}
+                          className={`w-10 h-10 rounded-lg font-bold transition-all ${
+                            modalData.pagination.current_page === p 
+                            ? 'bg-[#799351] text-white shadow-lg shadow-[#799351]/25 scale-110' 
+                            : 'bg-white border text-gray-600 hover:border-[#799351]/40'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ) : null
+                    })}
+                  </div>
+                  <button 
+                    disabled={modalData.pagination.current_page === modalData.pagination.total_pages || modalLoading}
+                    onClick={() => changePage(modalData.pagination.current_page + 1)}
+                    className="btn btn-secondary px-4 py-2 disabled:opacity-30"
+                  >
+                    Sau →
+                  </button>
+                </div>
+              </div>
+            ) : (
+                <div className="text-center py-12 text-gray-400 italic">Không có dữ liệu cho các tiêu chí lọc này</div>
+            )}
+          </div>
+          
+          {/* Footer */}
+          {/* <div className="bg-gray-50 border-t p-4 px-6 flex justify-between items-center">
+            <p className="text-sm text-gray-500 italic">
+              * Dữ liệu drill-through được truy xuất trực tiếp từ Fact_Sales theo bộ lọc hiện tại.
+            </p>
+            <div className="flex gap-3">
+               <button 
+                onClick={() => {
+                  updateTopLevelFilter('customer_key', selectedCustKey.toString())
+                  handleClose()
+                }}
+                className="bg-[#799351]/15 text-[#3A5A40] px-4 py-2 rounded-lg font-bold hover:bg-[#799351]/25 transition-colors"
+              >
+                  Lọc toàn Dashboard theo khách này
+               </button>
+               <button onClick={handleClose} className="btn btn-primary px-8 py-2">Đóng</button>
+            </div>
+          </div> */}
         </div>
       </div>
     )
@@ -397,6 +621,9 @@ function Dashboard() {
   // ============================================================================
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Modals */}
+      <CustomerDrillThroughModal />
+
       {/* KPI Cards */}
       <KPICards />
 
@@ -413,8 +640,12 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Product Rankings */}
-      <ProductRankings />
+      {/* Rankings Section */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Top5ProductsTable />
+        <Bottom5ProductsTable />
+        <TopCustomersTable />
+      </div>
 
       {/* Info Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

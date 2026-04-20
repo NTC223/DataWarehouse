@@ -504,11 +504,12 @@ class CuboidRouter:
         limit_clause = f"LIMIT {page_size} OFFSET {offset}"
         
         # Ghép câu SQL
+        main_measure = "sum_amount"
         sql = f"""
             SELECT {select_clause}
             FROM {table_name}
             {where_clause}
-            ORDER BY year DESC, quarter DESC, month DESC
+            ORDER BY {main_measure} DESC
             {limit_clause}
         """.strip()
         
@@ -971,11 +972,12 @@ class InventoryCuboidRouter:
         offset = (page - 1) * page_size
         limit_clause = f"LIMIT {page_size} OFFSET {offset}"
         
+        main_measure = "total_quantity_on_hand"
         sql = f"""
             SELECT {select_clause}
             FROM {table_name}
             {where_clause}
-            ORDER BY year DESC, quarter DESC, month DESC
+            ORDER BY {main_measure} DESC
             {limit_clause}
         """.strip()
         

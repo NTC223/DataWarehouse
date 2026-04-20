@@ -135,34 +135,6 @@ export function globalFilterToDashboardPayload(globalFilter) {
     product_key: globalFilter?.product_key ?? 'All'
   }
 }
-
-/**
- * Làm phẳng filters gửi OLAP explore/raw: bỏ bọc location/customer/store/time lồng nhau.
- */
-function flattenExploreFilters(filters) {
-  if (!filters || typeof filters !== 'object') return {}
-  const out = { ...filters }
-  if (out.location && typeof out.location === 'object') {
-    const loc = out.location
-    if (loc.state != null) out.state = loc.state
-    if (loc.city != null) out.city = loc.city
-    delete out.location
-  }
-  if (out.customer && typeof out.customer === 'object') {
-    Object.assign(out, out.customer)
-    delete out.customer
-  }
-  if (out.store && typeof out.store === 'object') {
-    Object.assign(out, out.store)
-    delete out.store
-  }
-  if (out.time && typeof out.time === 'object') {
-    Object.assign(out, out.time)
-    delete out.time
-  }
-  return out
-}
-
 const OLAP_SALES_AVAILABLE_FIELDS = [
   { id: 'year', name: 'Năm', category: 'time', column: 'year' },
   { id: 'quarter', name: 'Quý', category: 'time', column: 'quarter' },
@@ -184,11 +156,235 @@ const OLAP_INVENTORY_AVAILABLE_FIELDS = [
   { id: 'city', name: 'Thành phố', category: 'store', column: 'city' }
 ]
 
+// ============================================================================
+// OLAP HIERARCHY CONFIG
+// ============================================================================
+// Mỗi dimension có axis ('rows' | 'columns' | null) và danh sách fields đang chọn.
+// Khi chọn/bỏ chọn field → tự derive rows/columns fields gửi backend.
+// customer_type và customer_location: mutual exclusion (chỉ chọn 1 trong 2).
+
+export const CUBE_HIERARCHIES = {
+  sales: [
+    {
+      dimensionId: 'time',
+      dimensionLabel: '🕐 Thời gian',
+      hierarchies: [
+        {
+          id: 'time',
+          label: 'Thời gian',
+          fields: [
+            { id: 'year', name: 'Năm', column: 'year' },
+            { id: 'quarter', name: 'Quý', column: 'quarter' },
+            { id: 'month', name: 'Tháng', column: 'month' }
+          ]
+        }
+      ]
+    },
+    {
+      dimensionId: 'product',
+      dimensionLabel: '📦 Sản phẩm',
+      hierarchies: [
+        {
+          id: 'product',
+          label: 'Sản phẩm',
+          fields: [{ id: 'product_key', name: 'Sản phẩm', column: 'product_key' }]
+        }
+      ]
+    },
+    {
+      dimensionId: 'customer',
+      dimensionLabel: '👥 Khách hàng',
+      hierarchies: [
+        {
+          id: 'customer_type',
+          label: 'Loại KH',
+          fields: [
+            { id: 'customer_type', name: 'Loại KH', column: 'customer_type' },
+            { id: 'customer_key', name: 'Mã KH', column: 'customer_key' }
+          ]
+        },
+        {
+          id: 'customer_location',
+          label: 'Địa lý KH',
+          fields: [
+            { id: 'state', name: 'Bang', column: 'state' },
+            { id: 'city', name: 'Thành phố', column: 'city' },
+            { id: 'customer_key', name: 'Mã KH', column: 'customer_key' }
+          ]
+        }
+      ]
+    }
+  ],
+  inventory: [
+    {
+      dimensionId: 'time',
+      dimensionLabel: '🕐 Thời gian',
+      hierarchies: [
+        {
+          id: 'time',
+          label: 'Thời gian',
+          fields: [
+            { id: 'year', name: 'Năm', column: 'year' },
+            { id: 'quarter', name: 'Quý', column: 'quarter' },
+            { id: 'month', name: 'Tháng', column: 'month' }
+          ]
+        }
+      ]
+    },
+    {
+      dimensionId: 'product',
+      dimensionLabel: '📦 Sản phẩm',
+      hierarchies: [
+        {
+          id: 'product',
+          label: 'Sản phẩm',
+          fields: [{ id: 'product_key', name: 'Sản phẩm', column: 'product_key' }]
+        }
+      ]
+    },
+    {
+      dimensionId: 'store',
+      dimensionLabel: '🏪 Cửa hàng',
+      hierarchies: [
+        {
+          id: 'store',
+          label: 'Cửa hàng',
+          fields: [
+            { id: 'state', name: 'Bang', column: 'state' },
+            { id: 'city', name: 'Thành phố', column: 'city' },
+            { id: 'store_key', name: 'Mã cửa hàng', column: 'store_key' }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+// Map fieldId → hierarchyId (dùng để resolve mutex)
+const FIELD_TO_HIERARCHY = {}
+for (const cube of Object.values(CUBE_HIERARCHIES)) {
+  for (const dim of cube) {
+    for (const h of dim.hierarchies) {
+      for (const f of h.fields) {
+        FIELD_TO_HIERARCHY[f.id] = h.id
+      }
+    }
+  }
+}
+
+// Mutex pairs: hierarchyId ↔ hierarchyId
+const HIERARCHY_MUTEX = {
+  customer_type: 'customer_location',
+  customer_location: 'customer_type'
+}
+
+// Lấy tất cả field ids thuộc một hierarchy
+function getFieldsOfHierarchy(cube, hierarchyId) {
+  const dims = CUBE_HIERARCHIES[cube] ?? []
+  for (const dim of dims) {
+    for (const h of dim.hierarchies) {
+      if (h.id === hierarchyId) return h.fields.map(f => f.id)
+    }
+  }
+  return []
+}
+
+// Map fieldId → dimensionId (auto-generated từ CUBE_HIERARCHIES)
+const FIELD_TO_DIMENSION = {}
+for (const [cube, dims] of Object.entries(CUBE_HIERARCHIES)) {
+  for (const dim of dims) {
+    for (const h of dim.hierarchies) {
+      for (const f of h.fields) {
+        FIELD_TO_DIMENSION[f.id] = dim.dimensionId
+      }
+    }
+  }
+}
+
+// Lấy filter từ globalFilter, chỉ gửi field thuộc hierarchy đang active trong olapState.
+// Giải quyết conflict: nếu user dùng customer_type hierarchy → bỏ state/city,
+// nếu user dùng customer_location hierarchy → bỏ customer_type.
+function getOlapFiltersFromGlobalFilter(cube, olapState, globalFilter) {
+  const cubeState = olapState[cube] ?? {}
+  const result = {}
+
+  for (const [dimId, dimState] of Object.entries(cubeState)) {
+    const selected = Array.from(dimState.selected ?? [])
+    if (selected.length === 0) continue
+
+    const dimValue = globalFilter[dimId]
+    if (!dimValue) continue
+
+    for (const fieldId of selected) {
+      if (fieldId in dimValue) {
+        const val = dimValue[fieldId]
+        if (val !== 'All') result[fieldId] = val
+      }
+    }
+  }
+
+  return result
+}
+
+// Resolve selected fieldIds → rows[] và columns[] field objects
+function deriveRowsAndColumns(cube, olapStateCube) {
+  const dims = CUBE_HIERARCHIES[cube] ?? []
+  const rows = []
+  const cols = []
+
+  for (const dim of dims) {
+    const dimState = olapStateCube[dim.dimensionId]
+    if (!dimState) continue
+    const { axis, selected } = dimState
+    if (!selected || selected.size === 0) continue
+
+    for (const fieldId of selected) {
+      for (const h of dim.hierarchies) {
+        const field = h.fields.find(f => f.id === fieldId)
+        if (field) {
+          const target = axis === 'columns' ? cols : rows
+          if (!target.find(f => f.id === field.id)) {
+            target.push(field)
+          }
+          break
+        }
+      }
+    }
+  }
+
+  return { rows, cols }
+}
+
+// Lấy dimensionId chứa một fieldId
+function getFieldDimensionId(cube, fieldId) {
+  const dims = CUBE_HIERARCHIES[cube] ?? []
+  for (const dim of dims) {
+    for (const h of dim.hierarchies) {
+      if (h.fields.find(f => f.id === fieldId)) {
+        return dim.dimensionId
+      }
+    }
+  }
+  return null
+}
+
+// Lấy danh sách fieldIds thuộc một dimension
+function getFieldIdsOfDimension(cube, dimensionId) {
+  const dims = CUBE_HIERARCHIES[cube] ?? []
+  if (dimensionId === null) {
+    return dims.flatMap(d => d.hierarchies.flatMap(h => h.fields.map(f => f.id)))
+  }
+  const dim = dims.find(d => d.dimensionId === dimensionId)
+  if (!dim) return []
+  return dim.hierarchies.flatMap(h => h.fields.map(f => f.id))
+}
+
 const initialDataState = {
   overview: null,
   trend: null,
   topProducts: null,
   customerSegment: null,
+  topCustomers: null,
   filterOptions: null
 }
 
@@ -207,6 +403,7 @@ export const useDashboardStore = create(
           trend: false,
           topProducts: false,
           customerSegment: false,
+          topCustomers: false,
           filters: false,
           explore: false
         },
@@ -402,13 +599,14 @@ export const useDashboardStore = create(
          * Fetch tất cả dữ liệu dashboard
          */
         fetchAllDashboardData: async () => {
-          const { fetchOverview, fetchTrend, fetchTopProducts, fetchCustomerSegment } = get()
+          const { fetchOverview, fetchTrend, fetchTopProducts, fetchCustomerSegment, fetchTopCustomers } = get()
 
           await Promise.all([
             fetchOverview(),
             fetchTrend(),
             fetchTopProducts(),
-            fetchCustomerSegment()
+            fetchCustomerSegment(),
+            fetchTopCustomers()
           ])
         },
 
@@ -504,6 +702,53 @@ export const useDashboardStore = create(
         },
 
         /**
+         * Fetch dữ liệu Top 5 khách hàng doanh thu cao nhất
+         */
+        fetchTopCustomers: async () => {
+          const { globalFilter, setLoading } = get()
+
+          try {
+            setLoading('topCustomers', true)
+
+            const response = await api.post('/dashboard/top-customers', globalFilterToDashboardPayload(globalFilter))
+
+            set((state) => ({
+              data: { ...state.data, topCustomers: response.data }
+            }))
+          } catch (error) {
+            console.error('Error fetching top customers:', error)
+            set({ error: 'Không thể tải dữ liệu top customers' })
+          } finally {
+            setLoading('topCustomers', false)
+          }
+        },
+
+        /**
+         * Fetch drill-through chi tiết khách hàng (gọi từ Dashboard.jsx)
+         * @param {number} customerKey
+         * @param {number} page
+         * @param {number} pageSize
+         */
+        fetchDrillThrough: async (customerKey, page = 1, pageSize = 15) => {
+          const { globalFilter } = get()
+          const { year, quarter, month } = globalFilter.time || {}
+          const { state, city, customer_type } = globalFilter.customer || {}
+
+          const params = new URLSearchParams()
+          params.append('year', year || 'All')
+          params.append('quarter', quarter || 'All')
+          params.append('month', month || 'All')
+          params.append('state', state || 'All')
+          params.append('city', city || 'All')
+          params.append('customer_type', customer_type || 'All')
+          params.append('page', page.toString())
+          params.append('page_size', pageSize.toString())
+
+          const response = await api.get(`/dashboard/customer-drill-through/${customerKey}?${params.toString()}`)
+          return response.data
+        },
+
+        /**
          * Fetch filter options (khởi tạo)
          */
         fetchFilterOptions: async () => {
@@ -580,11 +825,27 @@ export const useOlapStore = create(
   devtools(
     (set, get) => ({
       // ===== STATE =====
+
+      // olapState[cube][dimensionId] = { axis: 'rows'|'columns'|null, selected: Set<fieldId> }
+      // selected = Set of fieldIds đang được tick
+      olapState: {
+        sales: {
+          time:     { axis: null, selected: new Set() },
+          product:  { axis: null, selected: new Set() },
+          customer: { axis: null, selected: new Set() }
+        },
+        inventory: {
+          time:   { axis: null, selected: new Set() },
+          product:{ axis: null, selected: new Set() },
+          store:  { axis: null, selected: new Set() }
+        }
+      },
+
+      // legacy fields (rows/columns/available/measures) — derive từ olapState
       fields: {
         available: [...OLAP_SALES_AVAILABLE_FIELDS],
         rows: [],
         columns: [],
-        filters: {},
         measures: ['sum_amount']
       },
 
@@ -613,84 +874,247 @@ export const useOlapStore = create(
       },
 
       error: null,
-      viewMode: 'pivot', // 'pivot' | 'raw'
+      viewMode: 'pivot', // 'pivot' | 'chart' | 'raw'
       activeCube: 'sales', // 'sales' | 'inventory'
 
       // ===== ACTIONS =====
 
       /**
-       * Set active cube (Sales | Inventory)
+       * Set active cube (Sales | Inventory) — reset olapState khi chuyển cube
        */
       setActiveCube: (cube) => {
+        const fresh = {
+          time:    { axis: null, selected: new Set() },
+          product: { axis: null, selected: new Set() },
+          [cube === 'sales' ? 'customer' : 'store']: { axis: null, selected: new Set() }
+        }
         set({
           activeCube: cube,
+          olapState: { ...get().olapState, [cube]: fresh },
           fields: {
             ...get().fields,
-            available:
-              cube === 'inventory'
-                ? [...OLAP_INVENTORY_AVAILABLE_FIELDS]
-                : [...OLAP_SALES_AVAILABLE_FIELDS],
+            available: cube === 'inventory'
+              ? [...OLAP_INVENTORY_AVAILABLE_FIELDS]
+              : [...OLAP_SALES_AVAILABLE_FIELDS],
             rows: [],
             columns: [],
-            measures: cube === 'inventory' ? ['total_quantity_on_hand'] : ['sum_amount'],
-            filters: {}
+            measures: cube === 'inventory' ? ['total_quantity_on_hand'] : ['sum_amount']
           },
           pivotData: null
         })
       },
 
       /**
-       * Thêm field vào rows
+       * Đặt axis cho một dimension (Hàng / Cột / null).
+       * axis = null → uncheck tất cả fields trong dimension đó.
        */
-      addToRows: (fieldOrId) => {
-        const { fields } = get()
-        // Support both field object and fieldId string for backward compatibility
-        const field = typeof fieldOrId === 'string'
-          ? fields.available.find(f => f.id === fieldOrId)
-          : fieldOrId
+      setDimensionAxis: (cube, dimensionId, axis) => {
+        set((state) => {
+          const cubeState = state.olapState[cube]
+          if (!cubeState) return {}
 
-        if (field && !fields.rows.find(r => r.id === field.id)) {
-          set((state) => ({
-            fields: {
-              ...state.fields,
-              rows: [...state.fields.rows, field]
-            }
-          }))
-        }
-      },
-
-      /**
-       * Thêm field vào columns
-       */
-      addToColumns: (fieldOrId) => {
-        const { fields } = get()
-        // Support both field object and fieldId string for backward compatibility
-        const field = typeof fieldOrId === 'string'
-          ? fields.available.find(f => f.id === fieldOrId)
-          : fieldOrId
-
-        if (field && !fields.columns.find(c => c.id === field.id)) {
-          set((state) => ({
-            fields: {
-              ...state.fields,
-              columns: [...state.fields.columns, field]
-            }
-          }))
-        }
-      },
-
-      /**
-       * Thêm filter
-       */
-      addFilter: (fieldId, value) => {
-        set((state) => ({
-          fields: {
-            ...state.fields,
-            filters: {
-              ...state.fields.filters,
-              [fieldId]: value
+          if (axis === null) {
+            return {
+              olapState: {
+                ...state.olapState,
+                [cube]: {
+                  ...cubeState,
+                  [dimensionId]: { axis: null, selected: new Set() }
+                }
+              }
             }
           }
+
+          return {
+            olapState: {
+              ...state.olapState,
+              [cube]: {
+                ...cubeState,
+                [dimensionId]: { ...cubeState[dimensionId], axis }
+              }
+            }
+          }
+        })
+        get()._recomputeRowsColumns()
+      },
+
+      /**
+       * Chọn / bỏ chọn một field cụ thể.
+       * - Nếu field chưa chọn → thêm vào selected (sau mutex check)
+       * - Nếu đã chọn → bỏ khỏi selected
+       * - Enforce mutex: customer_type ↔ customer_location
+       */
+      toggleField: (cube, fieldId) => {
+        const dimId = getFieldDimensionId(cube, fieldId)
+        const hId = FIELD_TO_HIERARCHY[fieldId]
+        const mutexPartner = HIERARCHY_MUTEX[hId]
+
+        set((state) => {
+          const cubeState = state.olapState[cube]
+          if (!cubeState) return {}
+          const dimState = cubeState[dimId]
+          const newSelected = new Set(dimState.selected)
+
+          if (newSelected.has(fieldId)) {
+            newSelected.delete(fieldId)
+          } else {
+            newSelected.add(fieldId)
+
+            // Enforce mutex: nếu chọn field thuộc mutex group → bỏ hết fields thuộc partner
+            if (mutexPartner) {
+              const partnerFieldIds = getFieldsOfHierarchy(cube, mutexPartner)
+              partnerFieldIds.forEach(fid => newSelected.delete(fid))
+            }
+          }
+
+          return {
+            olapState: {
+              ...state.olapState,
+              [cube]: {
+                ...cubeState,
+                [dimId]: { ...dimState, selected: newSelected }
+              }
+            }
+          }
+        })
+        get()._recomputeRowsColumns()
+      },
+
+      /**
+       * Chọn tất cả fields của một dimension.
+       */
+      selectAllDimension: (cube, dimensionId) => {
+        const fieldIds = getFieldIdsOfDimension(cube, dimensionId)
+        set((state) => {
+          const cubeState = state.olapState[cube]
+          if (!cubeState) return {}
+          const dimState = cubeState[dimensionId]
+          const newSelected = new Set(dimState.selected)
+          fieldIds.forEach(id => newSelected.add(id))
+          return {
+            olapState: {
+              ...state.olapState,
+              [cube]: {
+                ...cubeState,
+                [dimensionId]: { ...dimState, selected: newSelected }
+              }
+            }
+          }
+        })
+        get()._recomputeRowsColumns()
+      },
+
+      /**
+       * Bỏ chọn tất cả fields của một dimension.
+       */
+      deselectAllDimension: (cube, dimensionId) => {
+        set((state) => {
+          const cubeState = state.olapState[cube]
+          if (!cubeState) return {}
+          const dimState = cubeState[dimensionId]
+          return {
+            olapState: {
+              ...state.olapState,
+              [cube]: {
+                ...cubeState,
+                [dimensionId]: { ...dimState, selected: new Set() }
+              }
+            }
+          }
+        })
+        get()._recomputeRowsColumns()
+      },
+
+      /**
+       * Derive fields.rows/columns từ olapState hiện tại.
+       * Gọi mỗi khi olapState thay đổi.
+       */
+      _recomputeRowsColumns: () => {
+        const { activeCube, olapState, fields } = get()
+        const { rows, cols } = deriveRowsAndColumns(activeCube, olapState[activeCube] ?? {})
+
+        const prevRows = fields.rows.map(r => r.id).sort()
+        const prevCols = fields.columns.map(c => c.id).sort()
+        const newRows = rows.map(r => r.id).sort()
+        const newCols = cols.map(c => c.id).sort()
+
+        if (JSON.stringify(prevRows) !== JSON.stringify(newRows) ||
+            JSON.stringify(prevCols) !== JSON.stringify(newCols)) {
+          set((state) => ({
+            fields: { ...state.fields, rows, columns: cols }
+          }))
+        }
+      },
+
+      /**
+       * Thêm field vào rows (legacy — giữ cho backward compat, điều hướng sang toggleField)
+       * @deprecated
+       */
+      addToRows: (fieldOrId) => {
+        const fieldId = typeof fieldOrId === 'string' ? fieldOrId : fieldOrId.id
+        get().toggleField(get().activeCube, fieldId)
+      },
+
+      /**
+       * Thêm field vào columns (legacy)
+       * @deprecated
+       */
+      addToColumns: (fieldOrId) => {
+        const fieldId = typeof fieldOrId === 'string' ? fieldOrId : fieldOrId.id
+        get().toggleField(get().activeCube, fieldId)
+      },
+
+      /**
+       * Xóa field khỏi rows (legacy)
+       * @deprecated
+       */
+      removeFromRows: (fieldId) => {
+        get().toggleField(get().activeCube, fieldId)
+      },
+
+      /**
+       * Xóa field khỏi columns (legacy)
+       * @deprecated
+       */
+      removeFromColumns: (fieldId) => {
+        get().toggleField(get().activeCube, fieldId)
+      },
+
+      /**
+       * Swap axes (hoán đổi rows ↔ columns trong olapState)
+       */
+      swapAxes: () => {
+        set((state) => {
+          const cube = state.activeCube
+          const cubeState = state.olapState[cube]
+          const nextCube = {}
+          for (const [dimId, dimState] of Object.entries(cubeState)) {
+            const newAxis = dimState.axis === 'rows' ? 'columns'
+              : dimState.axis === 'columns' ? 'rows'
+              : null
+            nextCube[dimId] = { ...dimState, axis: newAxis }
+          }
+          return {
+            olapState: { ...state.olapState, [cube]: nextCube }
+          }
+        })
+        get()._recomputeRowsColumns()
+      },
+
+      /**
+       * Clear tất cả chọn lọc
+       */
+      clearAll: () => {
+        const cube = get().activeCube
+        const fresh = {
+          time:    { axis: null, selected: new Set() },
+          product: { axis: null, selected: new Set() },
+          [cube === 'sales' ? 'customer' : 'store']: { axis: null, selected: new Set() }
+        }
+        set((state) => ({
+          olapState: { ...state.olapState, [cube]: fresh },
+          fields: { ...state.fields, rows: [], columns: [] },
+          pivotData: null
         }))
       },
 
@@ -719,44 +1143,24 @@ export const useOlapStore = create(
       },
 
       /**
-       * Xóa filter
-       */
-      removeFilter: (fieldId) => {
-        set((state) => {
-          const newFilters = { ...state.fields.filters }
-          delete newFilters[fieldId]
-          return {
-            fields: {
-              ...state.fields,
-              filters: newFilters
-            }
-          }
-        })
-      },
-
-      /**
-       * Xoay trục (Swap rows và columns)
-       */
-      swapAxes: () => {
-        set((state) => ({
-          fields: {
-            ...state.fields,
-            rows: state.fields.columns,
-            columns: state.fields.rows
-          }
-        }))
-      },
-
-      /**
        * Clear tất cả
        */
       clearAll: () => {
+        const { activeCube } = get()
+        const freshOlapState = () => ({
+          time:    { axis: null, selected: new Set() },
+          product: { axis: null, selected: new Set() },
+          [activeCube === 'sales' ? 'customer' : 'store']: { axis: null, selected: new Set() }
+        })
         set((state) => ({
           fields: {
             ...state.fields,
             rows: [],
-            columns: [],
-            filters: {}
+            columns: []
+          },
+          olapState: {
+            ...state.olapState,
+            [activeCube]: freshOlapState()
           },
           pivotData: null
         }))
@@ -809,63 +1213,6 @@ export const useOlapStore = create(
       },
 
       /**
-       * Update filter section (dành cho cascading dropdowns ở Sidebar)
-       */
-      updateFilterSection: (section, updates) => {
-        set((state) => ({
-          fields: {
-            ...state.fields,
-            filters: {
-              ...state.fields.filters,
-              ...updates
-            }
-          },
-          pivotPagination: { ...state.pivotPagination, page: 1 }
-        }))
-        const { fields } = get()
-        if (fields.rows.length > 0 || fields.columns.length > 0) {
-          get().fetchPivotData(1)
-        }
-      },
-
-      /**
-       * Update top-level filter (dành cho Radio/Search ở Sidebar)
-       */
-      updateTopLevelFilter: (key, value) => {
-        set((state) => ({
-          fields: {
-            ...state.fields,
-            filters: {
-              ...state.fields.filters,
-              [key]: value
-            }
-          },
-          pivotPagination: { ...state.pivotPagination, page: 1 }
-        }))
-        const { fields } = get()
-        if (fields.rows.length > 0 || fields.columns.length > 0) {
-          get().fetchPivotData(1)
-        }
-      },
-
-      /**
-       * Reset bộ lọc OLAP
-       */
-      resetFilters: () => {
-        set((state) => ({
-          fields: {
-            ...state.fields,
-            filters: {}
-          },
-          pivotPagination: { ...state.pivotPagination, page: 1 }
-        }))
-        const { fields } = get()
-        if (fields.rows.length > 0 || fields.columns.length > 0) {
-          get().fetchPivotData(1)
-        }
-      },
-
-      /**
        * Fetch pivot data
        */
       fetchPivotData: async (page = null) => {
@@ -884,12 +1231,15 @@ export const useOlapStore = create(
         try {
           set({ loading: { ...get().loading, pivot: true }, error: null })
 
+          const { globalFilter } = useDashboardStore.getState()
+          const filters = getOlapFiltersFromGlobalFilter(activeCube, get().olapState, globalFilter)
+
           const requestBody = {
             cube: activeCube,
             rows: fields.rows.map(r => r.column),
             columns: fields.columns.map(c => c.column),
             measures: fields.measures,
-            filters: flattenExploreFilters(fields.filters),
+            filters,
             limit: 5000,
             page: currentPage,
             page_size: pivotPagination.page_size,
@@ -924,15 +1274,18 @@ export const useOlapStore = create(
        * Fetch raw data
        */
       fetchRawData: async (page = 1) => {
-        const { fields, activeCube, rawDataPagination, setLoading } = get()
+        const { fields, activeCube, rawDataPagination } = get()
 
         try {
           set({ loading: { ...get().loading, raw: true }, error: null })
 
+          const { globalFilter } = useDashboardStore.getState()
+          const filters = getOlapFiltersFromGlobalFilter(activeCube, get().olapState, globalFilter)
+
           const requestBody = {
-            cube: activeCube,  // ✏️ Thêm cube parameter
+            cube: activeCube,
             columns: [],
-            filters: flattenExploreFilters(fields.filters),
+            filters,
             page: page,
             page_size: rawDataPagination.page_size
           }

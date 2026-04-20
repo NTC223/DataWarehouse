@@ -2,27 +2,171 @@
  * ============================================================================
  * OLAPEXPLORER.JSX - OLAP Explorer Component (Tab 2)
  * ============================================================================
- * Component hiển thị OLAP Explorer với:
- * - Field Picker: Chọn fields cho Rows, Columns, Filters
- * - Pivot Table: Hiển thị dữ liệu 2 chiều
- * - Raw Data View: Dữ liệu thô với phân trang
- * - Toolbar: Swap axes, Export, Clear
- * 
- * Hỗ trợ 4 phép toán OLAP:
- * - Slice: Lọc dữ liệu
- * - Dice: Lọc nhiều chiều
- * - Pivot: Xoay trục
- * - Drill-down: Khoan sâu dữ liệu
+ * Giao diện hierarchy picker:
+ *   ☑ 🕐 Thời gian      [Hàng ▼]
+ *       ├─  [year]  [quarter]  [month]
+ *   ☑ 👥 Khách hàng    [Hàng ▼]
+ *       ├─  [customer_type]  [customer_key]      ← Loại KH
+ *       └─  [state]  [city]  [customer_key]     ← Địa lý KH (mutex)
+ *
+ * Logic:
+ * - Dimension checkbox: check → select all fields; uncheck → deselect all
+ * - Field chip: click → toggle
+ * - Axis dropdown: Hàng / Cột / ─
+ * - Mutex: customer_type ↔ customer_location fields
  * ============================================================================
  */
 
-import React, { useState, useEffect } from 'react'
-import { useOlapStore, formatCurrency, formatNumber } from '../stores/store'
+import React, { useEffect } from 'react'
+import { useOlapStore, formatCurrency, formatNumber, CUBE_HIERARCHIES } from '../stores/store'
 import LoadingSpinner from './LoadingSpinner'
+import DynamicOlapChart from './DynamicOlapChart'
+
+// ─── Axis Dropdown ────────────────────────────────────────────────────────────
+function AxisDropdown({ currentAxis, onChange }) {
+  return (
+    <select
+      value={currentAxis ?? ''}
+      onChange={(e) => onChange(e.target.value || null)}
+      className={`text-xs border rounded px-2 py-1 font-medium transition-colors ${
+        currentAxis === 'rows' ? 'border-green-400 bg-green-50 text-green-700' :
+        currentAxis === 'columns' ? 'border-green-400 bg-green-50 text-green-700' :
+        'border-gray-300 bg-white text-gray-400'
+      } focus:outline-none focus:ring-1 focus:ring-green-400`}
+    >
+      <option value="">Chọn</option>
+      <option value="rows">Hàng ↓</option>
+      <option value="columns">Cột →</option>
+    </select>
+  )
+}
+
+// ─── Field Chip ───────────────────────────────────────────────────────────────
+function FieldChip({ field, isSelected, isMutexBlocked, onToggle }) {
+  return (
+    <button
+      onClick={() => !isMutexBlocked && onToggle()}
+      disabled={isMutexBlocked}
+      className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
+        isSelected
+          ? 'bg-green-500 border-green-500 text-white shadow-sm'
+          : isMutexBlocked
+          ? 'opacity-30 cursor-not-allowed border-gray-200 text-gray-400 bg-gray-50'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-green-300 hover:text-green-600 hover:bg-green-50'
+      }`}
+      title={isMutexBlocked ? 'Không khả dụng (mutex)' : (isSelected ? 'Bỏ chọn' : 'Chọn')}
+    >
+      {field.name}
+    </button>
+  )
+}
+
+// ─── Dimension Group ─────────────────────────────────────────────────────────
+function DimensionGroup({ cube, dim, dimState, onAxisChange, onToggleField, onSelectAll, onDeselectAll }) {
+  const selected = dimState?.selected ?? new Set()
+  const allFieldIds = dim.hierarchies.flatMap(h => h.fields.map(f => f.id))
+  const allSelected = allFieldIds.every(id => selected.has(id))
+  const someSelected = allFieldIds.some(id => selected.has(id))
+
+  // Kiểm tra field có bị block bởi mutex không
+  const isFieldMutexBlocked = (fieldId) => {
+    if (selected.has(fieldId)) return false
+    // Nếu đã chọn field thuộc mutex group → field thuộc group kia bị blocked
+    const hId = (() => {
+      for (const h of dim.hierarchies) {
+        if (h.fields.find(f => f.id === fieldId)) return h.id
+      }
+      return null
+    })()
+    const MUTEX = { customer_type: 'customer_location', customer_location: 'customer_type' }
+    const partnerH = MUTEX[hId]
+    if (!partnerH) return false
+    const partnerDim = CUBE_HIERARCHIES[cube]?.find(d => d.dimensionId === dim.dimensionId)
+    if (!partnerDim) return false
+    const partnerHObj = partnerDim.hierarchies.find(h => h.id === partnerH)
+    if (!partnerHObj) return false
+    return partnerHObj.fields.some(f => selected.has(f.id))
+  }
+
+  const handleHeaderToggle = () => {
+    if (allSelected) {
+      onDeselectAll()
+    } else {
+      onSelectAll()
+    }
+  }
+
+  return (
+    <div className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+      {/* Header row */}
+      <div className="flex items-center gap-2 mb-2">
+
+        {/* Checkbox: ☑ all / ◑ some / ☐ none */}
+        <span
+          onClick={handleHeaderToggle}
+          className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 text-xs font-bold cursor-pointer transition-colors ${
+            allSelected
+              ? 'bg-green-500 border-green-500 text-white'
+              : someSelected
+              ? 'bg-green-200 border-green-400 text-green-700'
+              : 'border-gray-300 bg-white'
+          }`}
+          title={allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+        >
+          {allSelected ? '✓' : someSelected ? '◑' : ''}
+        </span>
+
+        {/* Label */}
+        <span
+          onClick={handleHeaderToggle}
+          className={`text-sm font-semibold flex-1 cursor-pointer transition-colors ${
+            allSelected
+              ? 'font-bold text-green-700'
+              : someSelected
+              ? 'font-semibold text-green-600'
+              : 'text-gray-700 hover:text-green-600'
+          }`}
+          title={allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+        >
+          {dim.dimensionLabel}
+        </span>
+
+        {/* Axis */}
+        <AxisDropdown
+          currentAxis={dimState?.axis ?? null}
+          onChange={(axis) => onAxisChange(cube, dim.dimensionId, axis)}
+        />
+      </div>
+
+      {/* Hierarchy sections */}
+      <div className="flex flex-col gap-1.5">
+        {dim.hierarchies.map((h) => (
+          <div key={h.id}>
+            {/* Hierarchy label */}
+            <div className="text-xs text-gray-400 mb-1">{h.label}</div>
+            {/* Field chips */}
+            <div className="flex flex-wrap items-center gap-1">
+              {h.fields.map((field) => (
+                <FieldChip
+                  key={field.id}
+                  field={field}
+                  isSelected={selected.has(field.id)}
+                  isMutexBlocked={isFieldMutexBlocked(field.id)}
+                  onToggle={() => onToggleField(cube, field.id)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function OlapExplorer() {
   const {
     fields,
+    olapState,
     pivotData,
     rawData,
     rawDataPagination,
@@ -33,10 +177,10 @@ function OlapExplorer() {
     viewMode,
     activeCube,
     setActiveCube,
-    addToRows,
-    addToColumns,
-    removeFromRows,
-    removeFromColumns,
+    toggleField,
+    selectAllDimension,
+    deselectAllDimension,
+    setDimensionAxis,
     swapAxes,
     clearAll,
     setViewMode,
@@ -51,68 +195,29 @@ function OlapExplorer() {
 
   // Fetch data khi fields thay đổi - luôn reset về trang 1
   useEffect(() => {
-    if (viewMode === 'pivot' && (fields.rows.length > 0 || fields.columns.length > 0)) {
+    if (fields.rows.length > 0 || fields.columns.length > 0) {
       fetchPivotData(1)
     }
-  }, [fields.rows, fields.columns, fields.measures, fields.filters, viewMode, activeCube])
+  }, [fields.rows, fields.columns, fields.measures, activeCube])
 
   useEffect(() => {
     if (viewMode === 'raw') {
       fetchRawData(1)
     }
-  }, [viewMode, fields.filters, activeCube])
+  }, [viewMode, activeCube])
 
   // ============================================================================
   // FIELD PICKER COMPONENT
   // ============================================================================
   const renderFieldPicker = () => {
-    // Fields khác nhau cho Sales Cube và Inventory Cube
-    const salesFields = [
-      { id: 'year', name: 'Năm', category: 'time', column: 'year' },
-      { id: 'quarter', name: 'Quý', category: 'time', column: 'quarter' },
-      { id: 'month', name: 'Tháng', category: 'time', column: 'month' },
-      { id: 'product_key', name: 'Sản phẩm', category: 'product', column: 'product_key' },
-      { id: 'customer_type', name: 'Loại KH', category: 'customer', column: 'customer_type' },
-      { id: 'customer_key', name: 'Mã KH', category: 'customer', column: 'customer_key' },
-      { id: 'state', name: 'Bang', category: 'customer', column: 'state' },
-      { id: 'city', name: 'Thành phố', category: 'customer', column: 'city' }
-    ]
-
-    const inventoryFields = [
-      { id: 'year', name: 'Năm', category: 'time', column: 'year' },
-      { id: 'quarter', name: 'Quý', category: 'time', column: 'quarter' },
-      { id: 'month', name: 'Tháng', category: 'time', column: 'month' },
-      { id: 'product_key', name: 'Sản phẩm', category: 'product', column: 'product_key' },
-      { id: 'store_key', name: 'Cửa hàng', category: 'store', column: 'store_key' },
-      { id: 'state', name: 'Bang', category: 'store', column: 'state' },
-      { id: 'city', name: 'Thành phố', category: 'store', column: 'city' }
-    ]
-
-    const availableFields = activeCube === 'sales' ? salesFields : inventoryFields
-
-
-    // Group fields by category
-    const groupedFields = availableFields.reduce((acc, field) => {
-      if (!acc[field.category]) {
-        acc[field.category] = []
-      }
-      acc[field.category].push(field)
-      return acc
-    }, {})
-
-    const categoryLabels = {
-      time: '🕐 Thời gian',
-      product: '📦 Sản phẩm',
-      customer: '👥 Khách hàng',
-      store: '🏪 Cửa hàng'
-    }
+    const cube = activeCube
+    const dimensions = CUBE_HIERARCHIES[cube] ?? []
+    const cubeState = olapState[cube] ?? {}
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">
-            📋 Chọn trường dữ liệu
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-800">📋 Chọn trường dữ liệu</h3>
 
           {/* Cube Switcher */}
           <div className="flex bg-gray-100 rounded-lg p-1">
@@ -137,63 +242,21 @@ function OlapExplorer() {
           </div>
         </div>
 
-        {/* Cube Info */}
-        <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm">
-          {activeCube === 'sales' ? (
-            <p className="text-blue-700">
-              <strong>📊 Sales Cube:</strong> Dimensions: Time, Product, Customer (gồm state, city, loại KH, mã KH) |
-              Measures: total_quantity, sum_amount
-            </p>
-          ) : (
-            <p className="text-green-700">
-              <strong>📦 Inventory Cube:</strong> Dimensions: Time, Product, Store (gồm state, city, store_key) |
-              Measures: total_quantity_on_hand
-            </p>
-          )}
-        </div>
-
-        {/* Available Fields - Compact Redesign */}
-        <div className="space-y-3">
-          {Object.entries(groupedFields).map(([category, categoryFields]) => (
-            <div key={category} className="flex flex-col sm:flex-row sm:items-center gap-y-2 pb-3 border-b border-gray-100 last:border-0 last:pb-0">
-              <h4 className="text-sm font-medium text-gray-500 w-32 shrink-0">
-                {categoryLabels[category]}
-              </h4>
-              <div className="flex flex-wrap items-center gap-2">
-                {categoryFields.map(field => {
-                  const isInRows = fields.rows.find(r => r.id === field.id)
-                  const isInCols = fields.columns.find(c => c.id === field.id)
-                  const isUsed = isInRows || isInCols
-
-                  return (
-                    <div key={field.id} className={`inline-flex items-center text-xs border rounded-md shadow-sm divide-x overflow-hidden transition-all ${isUsed ? 'border-gray-200 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}>
-                      <div className="px-2 py-1.5 font-medium bg-gray-100 text-gray-700 min-w-[70px] text-center">
-                        {field.name}
-                      </div>
-                      <button
-                        onClick={() => addToRows(field)}
-                        disabled={isUsed}
-                        className={`px-2 py-1.5 font-medium transition-colors ${isInRows ? 'bg-blue-100 text-blue-700' : 'bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-600'} disabled:cursor-not-allowed`}
-                        title="Thêm vào Hàng"
-                      >
-                        Hàng ↓
-                      </button>
-                      <button
-                        onClick={() => addToColumns(field)}
-                        disabled={isUsed}
-                        className={`px-2 py-1.5 font-medium transition-colors ${isInCols ? 'bg-green-100 text-green-700' : 'bg-white text-gray-600 hover:bg-green-50 hover:text-green-600'} disabled:cursor-not-allowed`}
-                        title="Thêm vào Cột"
-                      >
-                        Cột →
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+        {/* Dimension columns — horizontal layout */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {dimensions.map((dim) => (
+            <DimensionGroup
+              key={dim.dimensionId}
+              cube={cube}
+              dim={dim}
+              dimState={cubeState[dim.dimensionId]}
+              onAxisChange={setDimensionAxis}
+              onToggleField={toggleField}
+              onSelectAll={(dimId) => selectAllDimension(cube, dimId)}
+              onDeselectAll={(dimId) => deselectAllDimension(cube, dimId)}
+            />
           ))}
         </div>
-
 
         {/* Measure Selector */}
         <div className="mt-4 pt-3 border-t border-gray-200">
@@ -213,7 +276,7 @@ function OlapExplorer() {
                       className="w-4 h-4 rounded border-gray-300 cursor-pointer"
                     />
                     <span className="ml-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-gray-700 font-medium">
-                      📦 Tổng qty
+                      📦 Tổng slg
                     </span>
                   </label>
                   <label className="inline-flex items-center text-xs cursor-pointer">
@@ -235,89 +298,6 @@ function OlapExplorer() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ============================================================================
-  // DROP ZONES COMPONENT
-  // ============================================================================
-  const renderDropZones = () => {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Rows Zone */}
-        <div className="drop-zone">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-semibold text-gray-700">
-              📥 Hàng (Rows)
-            </h4>
-            {fields.rows.length > 0 && (
-              <button
-                onClick={() => fields.rows.forEach(r => removeFromRows(r.id))}
-                className="text-xs text-red-500 hover:text-red-700"
-              >
-                Xóa tất cả
-              </button>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2 min-h-[40px]">
-            {fields.rows.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">Kéo trường vào đây</p>
-            ) : (
-              fields.rows.map((field, index) => (
-                <div
-                  key={field.id}
-                  className="flex items-center gap-1 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
-                >
-                  <span>{index + 1}. {field.name}</span>
-                  <button
-                    onClick={() => removeFromRows(field.id)}
-                    className="text-blue-600 hover:text-blue-800 ml-1"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Columns Zone */}
-        <div className="drop-zone">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-semibold text-gray-700">
-              📤 Cột (Columns)
-            </h4>
-            {fields.columns.length > 0 && (
-              <button
-                onClick={() => fields.columns.forEach(c => removeFromColumns(c.id))}
-                className="text-xs text-red-500 hover:text-red-700"
-              >
-                Xóa tất cả
-              </button>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2 min-h-[40px]">
-            {fields.columns.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">Kéo trường vào đây</p>
-            ) : (
-              fields.columns.map((field, index) => (
-                <div
-                  key={field.id}
-                  className="flex items-center gap-1 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm"
-                >
-                  <span>{index + 1}. {field.name}</span>
-                  <button
-                    onClick={() => removeFromColumns(field.id)}
-                    className="text-green-600 hover:text-green-800 ml-1"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))
-            )}
           </div>
         </div>
       </div>
@@ -727,6 +707,43 @@ function OlapExplorer() {
   }
 
   // ============================================================================
+  // CHART COMPONENT
+  // ============================================================================
+  const renderChart = () => {
+    if (loading.pivot) {
+      return (
+        <div className="h-[500px] flex items-center justify-center">
+          <LoadingSpinner size="lg" />
+        </div>
+      )
+    }
+
+    if (!pivotData?.data || pivotData.data.length === 0) {
+      return (
+        <div className="h-[500px] flex items-center justify-center">
+          <div className="text-center text-gray-500">
+            <p className="text-lg mb-2">📈 Chưa có dữ liệu</p>
+            <p className="text-sm">Hãy chọn các trường dữ liệu để xem biểu đồ</p>
+          </div>
+        </div>
+      )
+    }
+
+    const page = pivotPagination.page || 1
+
+    return (
+      <div className="w-full">
+        <DynamicOlapChart
+          data={pivotData.data}
+          activeRows={fields.rows}
+          activeColumns={fields.columns}
+          currentPage={page}
+        />
+      </div>
+    )
+  }
+
+  // ============================================================================
   // MAIN RENDER
   // ============================================================================
   return (
@@ -746,9 +763,6 @@ function OlapExplorer() {
       {/* Field Picker */}
       {renderFieldPicker()}
 
-      {/* Drop Zones */}
-      {renderDropZones()}
-
       {/* Toolbar */}
       {renderToolbar()}
 
@@ -756,11 +770,23 @@ function OlapExplorer() {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full overflow-hidden">
         <div className="p-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-800">
-            {viewMode === 'pivot' ? '📊 Pivot Table' : '📄 Dữ liệu thô'}
+            📊 Pivot Table
           </h3>
         </div>
         <div className="p-4 w-full overflow-x-hidden">
-          {viewMode === 'pivot' ? renderPivotTable() : renderRawDataTable()}
+          {renderPivotTable()}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full overflow-hidden">
+        <div className="p-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-800">
+            📈 Biểu đồ
+          </h3>
+        </div>
+        <div className="p-4 w-full overflow-x-hidden">
+          {renderChart()}
         </div>
       </div>
 
