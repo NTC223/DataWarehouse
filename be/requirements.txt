@@ -1,0 +1,32 @@
+# =============================================================================
+# REQUIREMENTS.TXT - Dependencies cho Backend (FastAPI)
+# =============================================================================
+# Cài đặt: pip install -r requirements.txt
+# =============================================================================
+
+# FastAPI Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# PostgreSQL Database Driver (Raw SQL - Không dùng ORM)
+psycopg2-binary==2.9.9
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Data Validation
+pydantic==2.5.3
+
+# CORS Middleware
+python-multipart==0.0.6
+
+# Logging (đã có sẵn trong Python standard library)
+# Không cần cài thêm
+
+# Optional: Async support (nếu cần trong tương lai)
+# asyncpg==0.29.0
+
+# Development dependencies (chỉ cần khi phát triển)
+# pytest==7.4.4
+# pytest-asyncio==0.23.3
+# httpx==0.26.0
