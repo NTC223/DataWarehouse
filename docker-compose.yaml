@@ -361,31 +361,31 @@ services:
     restart: always
     networks:
       - data_network
-  # be:
-  #   build:
-  #     context: ./be
-  #     dockerfile: Dockerfile
-  #   container_name: backend
-  #   ports:
-  #     - "8000:8000"
-  #   env_file: .env
-  #   restart: always
-  #   networks:
-  #     - data_network
+  be:
+    build:
+      context: ./be
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "8000:8000"
+    env_file: .env
+    restart: always
+    networks:
+      - data_network
 
-  # fe:
-  #   build:
-  #     context: ./fe
-  #     dockerfile: Dockerfile
-  #   container_name: frontend
-  #   ports:
-  #     - "5173:5173"
-  #   env_file: .env
-  #   restart: always
-  #   networks:
-  #     - data_network
-  #   depends_on:
-  #     - be
+  fe:
+    build:
+      context: ./fe
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    env_file: .env
+    restart: always
+    networks:
+      - data_network
+    depends_on:
+      - be
 
 networks:
   data_network:
